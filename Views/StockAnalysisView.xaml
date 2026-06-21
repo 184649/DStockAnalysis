@@ -109,6 +109,21 @@
                                 </StackPanel>
                                 <TextBlock Text="{Binding SelectedStock.Description}" Style="{StaticResource Sub}"
                                            TextWrapping="Wrap" Margin="0,6,0,0" MaxWidth="900" HorizontalAlignment="Left"/>
+                                <!-- 外部データソース(最新の実数値を確認) -->
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <TextBlock Text="リンク:" Style="{StaticResource Sub}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                    <ItemsControl ItemsSource="{Binding ReferenceLinks}">
+                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Button Content="{Binding Name}" Margin="0,0,6,4" Padding="8,3" FontSize="11"
+                                                        ToolTip="{Binding Url}"
+                                                        Command="{Binding DataContext.OpenLinkCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                        CommandParameter="{Binding}"/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
                                 <Button Content="IRリンク" Command="{Binding OpenIrCommand}" Margin="0,0,6,0"

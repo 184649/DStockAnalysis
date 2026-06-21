@@ -71,11 +71,17 @@ public class StockAnalysisViewModel : ViewModelBase
 
     public bool HasSelection => SelectedStock != null;
 
+    private readonly Services.ReferenceLinkService _refService = new();
+
+    /// <summary>選択銘柄の外部データソース(IR BANK等)へのリンク。最新の実数値確認に使用。</summary>
+    public ObservableCollection<Services.ReferenceLink> ReferenceLinks { get; } = new();
+
     public ICommand ApplyCommand { get; }          // チェック/メモ反映+保存
     public ICommand ShowScreeningCommand { get; }
     public ICommand ShowComparisonCommand { get; }
     public ICommand AddToComparisonCommand { get; }
     public ICommand OpenIrCommand { get; }
+    public ICommand OpenLinkCommand { get; }
 
     public StockAnalysisViewModel(MainViewModel main)
     {
@@ -85,6 +91,7 @@ public class StockAnalysisViewModel : ViewModelBase
         ShowComparisonCommand = main.ShowComparisonCommand;
         AddToComparisonCommand = new RelayCommand(() => _main.ComparisonVM.Add(SelectedStock));
         OpenIrCommand = new RelayCommand(OpenIr);
+        OpenLinkCommand = new RelayCommand(p => OpenUrl((p as Services.ReferenceLink)?.Url));
     }
 
     public void RefreshSourceData()
@@ -118,9 +125,10 @@ public class StockAnalysisViewModel : ViewModelBase
         _main.StatusText = $"{SelectedStock.Name} のチェック・メモを保存し、スコアを再計算しました。";
     }
 
-    private void OpenIr()
+    private void OpenIr() => OpenUrl(SelectedStock?.IRUrl);
+
+    private static void OpenUrl(string? url)
     {
-        var url = SelectedStock?.IRUrl;
         if (string.IsNullOrWhiteSpace(url)) return;
         try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); }
         catch { /* リンクが無効でも無視 */ }
@@ -132,7 +140,16 @@ public class StockAnalysisViewModel : ViewModelBase
         BuildBuffettItems();
         BuildCharts();
         BuildRadar();
+        BuildReferenceLinks();
         OnPropertyChanged(nameof(SelectedStock));
+    }
+
+    private void BuildReferenceLinks()
+    {
+        ReferenceLinks.Clear();
+        if (SelectedStock == null) return;
+        foreach (var link in _refService.BuildLinks(SelectedStock.Code))
+            ReferenceLinks.Add(link);
     }
 
     private void BuildBuffettItems()
