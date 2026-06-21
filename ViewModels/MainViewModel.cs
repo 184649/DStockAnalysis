@@ -20,6 +20,9 @@ public class MainViewModel : ViewModelBase
     /// <summary>CSV ファイル選択ダイアログ。View(MainWindow)から注入する。</summary>
     public Func<string?>? FilePicker { get; set; }
 
+    /// <summary>CSV 保存先選択ダイアログ。View(MainWindow)から注入する。</summary>
+    public Func<string, string?>? SaveFilePicker { get; set; }
+
     /// <summary>全銘柄。3画面で共有する。</summary>
     public ObservableCollection<Stock> AllStocks { get; } = new();
 
@@ -71,6 +74,7 @@ public class MainViewModel : ViewModelBase
     public ICommand ShowAnalysisCommand { get; }
     public ICommand ShowComparisonCommand { get; }
     public ICommand ImportCsvCommand { get; }
+    public ICommand ExportTemplateCommand { get; }
     public ICommand UpdateMasterCommand { get; }
     public ICommand LoadSampleCommand { get; }
     public ICommand SaveCommand { get; }
@@ -86,6 +90,7 @@ public class MainViewModel : ViewModelBase
         ShowAnalysisCommand = new RelayCommand(() => CurrentViewModel = AnalysisVM);
         ShowComparisonCommand = new RelayCommand(() => CurrentViewModel = ComparisonVM);
         ImportCsvCommand = new RelayCommand(ImportCsv);
+        ExportTemplateCommand = new RelayCommand(ExportTemplate);
         UpdateMasterCommand = new RelayCommand(UpdateMaster);
         LoadSampleCommand = new RelayCommand(LoadSample);
         SaveCommand = new RelayCommand(SaveAll);
@@ -138,7 +143,7 @@ public class MainViewModel : ViewModelBase
         if (string.IsNullOrEmpty(path)) return;
         try
         {
-            var imported = _csv.ImportFromFile(path);
+            var (imported, columns) = _csv.ImportFileWithColumns(path);
             if (imported.Count == 0)
             {
                 StatusText = "CSVから銘柄を読み込めませんでした。ヘッダー行とCode列を確認してください。";
@@ -151,7 +156,7 @@ public class MainViewModel : ViewModelBase
             {
                 if (byCode.TryGetValue(imp.Code, out var existing))
                 {
-                    existing.CopyIndicatorsFrom(imp);
+                    existing.CopyIndicatorsFrom(imp, columns); // CSVに有る列だけ上書き
                     _scorer.Recalculate(existing);
                     updated++;
                 }
@@ -172,6 +177,57 @@ public class MainViewModel : ViewModelBase
         catch (Exception ex)
         {
             StatusText = "CSV取込エラー: " + ex.Message;
+        }
+    }
+
+    /// <summary>
+    /// 実データ入力用テンプレCSVを出力する。全銘柄のコード/銘柄名/市場/業種/規模を前埋めし、
+    /// 指標列は空欄。ユーザーが実値を記入して「CSV取込」すれば、記入した列だけが上書きされる。
+    /// </summary>
+    private void ExportTemplate()
+    {
+        var path = SaveFilePicker?.Invoke("stocks_template.csv");
+        if (string.IsNullOrEmpty(path)) return;
+        try
+        {
+            // 取込側が解釈する列(基本情報は前埋め、その他は空欄)
+            var headers = new[]
+            {
+                "Code","Name","Market","Sector","Scale","Theme","Description","FiscalMonth","IRUrl",
+                "Price","MarketCap","PER","PBR","ROE","MixFactor","EPS","BPS",
+                "OperatingMargin","OrdinaryProfitMargin","NetProfitMargin",
+                "DividendYield","PayoutRatio","Dividend","ConsecutiveDividendYears","DividendCutCount",
+                "NonDividendCutYears","BuybackAmount","EquityRatio","InterestBearingDebtRatio",
+                "RevenueGrowth1Y","RevenueGrowth3Y","RevenueGrowth5Y","RevenueGrowth10Y",
+                "RevenueGrowthRate","AverageRevenueGrowth3Y","OperatingProfitGrowthRate",
+                "OrdinaryProfitGrowthRate","NetProfitGrowthRate","EpsGrowthRate",
+                "OperatingCF","InvestingCF","FinancingCF","FreeCashFlow","OperatingCashFlowMargin",
+                "StockPriceChange3M","AverageStockPriceChange3M","AveragePrice3M",
+                "HasShareholderBenefit","ShareholderBenefit","BenefitContent","BenefitCategory",
+                "BenefitRightsMonth","RequiredSharesForBenefit","BenefitValue","BenefitYield","TotalYield",
+                "HasLongTermBenefit","LongTermBenefitCondition","LongTermBenefitContent","BenefitRiskMemo"
+            };
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine(string.Join(",", headers));
+            string Q(string v) => v.Contains(',') || v.Contains('"') || v.Contains('\n')
+                ? "\"" + v.Replace("\"", "\"\"") + "\"" : v;
+
+            foreach (var s in AllStocks.OrderBy(x => x.Code, StringComparer.Ordinal))
+            {
+                var cells = new string[headers.Length];
+                for (int i = 0; i < headers.Length; i++) cells[i] = "";
+                cells[0] = Q(s.Code); cells[1] = Q(s.Name); cells[2] = Q(s.Market);
+                cells[3] = Q(s.Sector); cells[4] = Q(s.Scale); cells[7] = Q(s.FiscalMonth);
+                sb.AppendLine(string.Join(",", cells));
+            }
+
+            System.IO.File.WriteAllText(path, sb.ToString(), new System.Text.UTF8Encoding(true)); // BOM付きでExcel可読
+            StatusText = $"テンプレCSVを出力しました({AllStocks.Count}銘柄): {path}";
+        }
+        catch (Exception ex)
+        {
+            StatusText = "テンプレ出力エラー: " + ex.Message;
         }
     }
 

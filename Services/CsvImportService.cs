@@ -11,17 +11,24 @@ namespace DStockAnalysis.Services;
 /// </summary>
 public class CsvImportService
 {
-    public List<Stock> ImportFromFile(string path)
+    public List<Stock> ImportFromFile(string path) => ImportFileWithColumns(path).stocks;
+
+    public List<Stock> Parse(string content) => ParseWithColumns(content).stocks;
+
+    /// <summary>ファイルから取り込み、併せて CSV に存在した列名集合を返す(列単位マージ用)。</summary>
+    public (List<Stock> stocks, HashSet<string> columns) ImportFileWithColumns(string path)
     {
         using var reader = new StreamReader(path, DetectEncoding(path));
-        return Parse(reader.ReadToEnd());
+        return ParseWithColumns(reader.ReadToEnd());
     }
 
-    public List<Stock> Parse(string content)
+    /// <summary>CSV を解析し、(銘柄一覧, 存在した列名集合) を返す。</summary>
+    public (List<Stock> stocks, HashSet<string> columns) ParseWithColumns(string content)
     {
         var rows = ParseCsv(content);
         var result = new List<Stock>();
-        if (rows.Count == 0) return result;
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (rows.Count == 0) return (result, columns);
 
         // ヘッダー -> 列インデックス(大文字小文字無視)
         var header = rows[0];
@@ -32,6 +39,7 @@ public class CsvImportService
             if (!string.IsNullOrEmpty(key) && !map.ContainsKey(key))
                 map[key] = i;
         }
+        foreach (var k in map.Keys) columns.Add(k);
 
         for (int r = 1; r < rows.Count; r++)
         {
@@ -159,7 +167,7 @@ public class CsvImportService
             result.Add(s);
         }
 
-        return result;
+        return (result, columns);
     }
 
     private static Encoding DetectEncoding(string path)

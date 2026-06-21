@@ -79,7 +79,9 @@
                     <Button Content="全銘柄更新(JPX)" Command="{Binding UpdateMasterCommand}" Margin="0,0,6,0"
                             ToolTip="日本取引所グループの上場銘柄一覧(毎月更新)を再ダウンロードします"/>
                     <Button Content="CSV取込" Command="{Binding ImportCsvCommand}" Margin="0,0,6,0"
-                            ToolTip="銘柄コードで照合し、実データ指標を上書き取込します"/>
+                            ToolTip="銘柄コードで照合し、CSVに有る列だけ実データで上書き取込します"/>
+                    <Button Content="テンプレ出力" Command="{Binding ExportTemplateCommand}" Margin="0,0,6,0"
+                            ToolTip="全銘柄のコード/銘柄名入りCSVを出力。実値を記入して取込できます"/>
                     <Button Content="サンプル" Command="{Binding LoadSampleCommand}" Margin="0,0,6,0"/>
                     <Button Content="再計算" Command="{Binding RecalculateCommand}" Margin="0,0,6,0"/>
                     <Button Content="保存" Command="{Binding SaveCommand}"/>

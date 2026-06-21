@@ -149,39 +149,85 @@ public class Stock : ObservableObject
 
     /// <summary>
     /// CSV 取込銘柄(src)の属性・指標を本インスタンスへ取り込む。
+    /// cols を指定すると、その列名に対応する項目のみ上書きする(部分CSV対応)。null なら全項目。
     /// Memo / BuffettCheck / UserInterest / History / スコアは引き継がない(別管理・再計算)。
     /// </summary>
-    public void CopyIndicatorsFrom(Stock src)
+    public void CopyIndicatorsFrom(Stock src, ISet<string>? cols = null)
     {
-        Name = src.Name; Market = src.Market; Sector = src.Sector; Scale = src.Scale;
-        Theme = src.Theme; Description = src.Description; FiscalMonth = src.FiscalMonth;
-        IRUrl = src.IRUrl; DataUpdated = src.DataUpdated;
-        Price = src.Price; MarketCap = src.MarketCap; PER = src.PER; PBR = src.PBR; ROE = src.ROE;
-        MixFactor = src.MixFactor; EPS = src.EPS; BPS = src.BPS; OperatingMargin = src.OperatingMargin;
-        OrdinaryProfitMargin = src.OrdinaryProfitMargin; NetProfitMargin = src.NetProfitMargin;
-        DividendYield = src.DividendYield; PayoutRatio = src.PayoutRatio; Dividend = src.Dividend;
-        DividendTrend = src.DividendTrend; CumulativeDividend = src.CumulativeDividend; DoeAdopted = src.DoeAdopted;
-        ConsecutiveDividendYears = src.ConsecutiveDividendYears; DividendCutCount = src.DividendCutCount;
-        NonDividendCutYears = src.NonDividendCutYears; DividendRemainingYears = src.DividendRemainingYears;
-        BuybackAmount = src.BuybackAmount; ShareholderReturnPolicy = src.ShareholderReturnPolicy;
-        DividendGrowth1Y = src.DividendGrowth1Y; DividendGrowth3Y = src.DividendGrowth3Y;
-        DividendGrowth5Y = src.DividendGrowth5Y; DividendGrowth10Y = src.DividendGrowth10Y;
-        HasShareholderBenefit = src.HasShareholderBenefit; ShareholderBenefit = src.ShareholderBenefit;
-        BenefitContent = src.BenefitContent; BenefitCategory = src.BenefitCategory;
-        BenefitRightsMonth = src.BenefitRightsMonth; RequiredSharesForBenefit = src.RequiredSharesForBenefit;
-        BenefitValue = src.BenefitValue; BenefitYield = src.BenefitYield; TotalYield = src.TotalYield;
-        HasLongTermBenefit = src.HasLongTermBenefit; LongTermBenefitCondition = src.LongTermBenefitCondition;
-        LongTermBenefitContent = src.LongTermBenefitContent; BenefitRiskMemo = src.BenefitRiskMemo;
-        EquityRatio = src.EquityRatio; InterestBearingDebtRatio = src.InterestBearingDebtRatio;
-        RevenueGrowth1Y = src.RevenueGrowth1Y; RevenueGrowth3Y = src.RevenueGrowth3Y;
-        RevenueGrowth5Y = src.RevenueGrowth5Y; RevenueGrowth10Y = src.RevenueGrowth10Y;
-        RevenueGrowthRate = src.RevenueGrowthRate; AverageRevenueGrowth3Y = src.AverageRevenueGrowth3Y;
-        OperatingProfitGrowthRate = src.OperatingProfitGrowthRate; OrdinaryProfitGrowthRate = src.OrdinaryProfitGrowthRate;
-        NetProfitGrowthRate = src.NetProfitGrowthRate; EpsGrowthRate = src.EpsGrowthRate;
-        OperatingCF = src.OperatingCF; InvestingCF = src.InvestingCF; FinancingCF = src.FinancingCF;
-        FreeCashFlow = src.FreeCashFlow; OperatingCashFlowMargin = src.OperatingCashFlowMargin;
-        StockPriceChange3M = src.StockPriceChange3M; AverageStockPriceChange3M = src.AverageStockPriceChange3M;
-        AveragePrice3M = src.AveragePrice3M; PriceChange3M = src.PriceChange3M; PriceChangeAverage3M = src.PriceChangeAverage3M;
+        bool H(params string[] names) => cols == null || names.Any(cols.Contains);
+
+        if (H("Name")) Name = src.Name;
+        if (H("Market")) Market = src.Market;
+        if (H("Sector")) Sector = src.Sector;
+        if (H("Scale")) Scale = src.Scale;
+        if (H("Theme")) Theme = src.Theme;
+        if (H("Description")) Description = src.Description;
+        if (H("FiscalMonth")) FiscalMonth = src.FiscalMonth;
+        if (H("IRUrl")) IRUrl = src.IRUrl;
+        if (H("DataUpdated")) DataUpdated = src.DataUpdated;
+        if (H("Price")) Price = src.Price;
+        if (H("MarketCap")) MarketCap = src.MarketCap;
+        if (H("PER")) PER = src.PER;
+        if (H("PBR")) PBR = src.PBR;
+        if (H("ROE")) ROE = src.ROE;
+        if (H("MixFactor")) MixFactor = src.MixFactor;
+        if (H("EPS")) EPS = src.EPS;
+        if (H("BPS")) BPS = src.BPS;
+        if (H("OperatingMargin")) OperatingMargin = src.OperatingMargin;
+        if (H("OrdinaryProfitMargin")) OrdinaryProfitMargin = src.OrdinaryProfitMargin;
+        if (H("NetProfitMargin")) NetProfitMargin = src.NetProfitMargin;
+        if (H("DividendYield")) DividendYield = src.DividendYield;
+        if (H("PayoutRatio")) PayoutRatio = src.PayoutRatio;
+        if (H("Dividend")) Dividend = src.Dividend;
+        if (H("DividendTrend")) DividendTrend = src.DividendTrend;
+        if (H("CumulativeDividend")) CumulativeDividend = src.CumulativeDividend;
+        if (H("DoeAdopted")) DoeAdopted = src.DoeAdopted;
+        if (H("ConsecutiveDividendYears")) ConsecutiveDividendYears = src.ConsecutiveDividendYears;
+        if (H("DividendCutCount")) DividendCutCount = src.DividendCutCount;
+        if (H("NonDividendCutYears")) NonDividendCutYears = src.NonDividendCutYears;
+        if (H("DividendRemainingYears")) DividendRemainingYears = src.DividendRemainingYears;
+        if (H("BuybackAmount")) BuybackAmount = src.BuybackAmount;
+        if (H("ShareholderReturnPolicy")) ShareholderReturnPolicy = src.ShareholderReturnPolicy;
+        if (H("DividendGrowth1Y")) DividendGrowth1Y = src.DividendGrowth1Y;
+        if (H("DividendGrowth3Y")) DividendGrowth3Y = src.DividendGrowth3Y;
+        if (H("DividendGrowth5Y")) DividendGrowth5Y = src.DividendGrowth5Y;
+        if (H("DividendGrowth10Y")) DividendGrowth10Y = src.DividendGrowth10Y;
+        if (H("HasShareholderBenefit", "ShareholderBenefit", "BenefitContent")) HasShareholderBenefit = src.HasShareholderBenefit;
+        if (H("ShareholderBenefit")) ShareholderBenefit = src.ShareholderBenefit;
+        if (H("BenefitContent")) BenefitContent = src.BenefitContent;
+        if (H("BenefitCategory")) BenefitCategory = src.BenefitCategory;
+        if (H("BenefitRightsMonth")) BenefitRightsMonth = src.BenefitRightsMonth;
+        if (H("RequiredSharesForBenefit")) RequiredSharesForBenefit = src.RequiredSharesForBenefit;
+        if (H("BenefitValue")) BenefitValue = src.BenefitValue;
+        if (H("BenefitYield")) BenefitYield = src.BenefitYield;
+        if (H("TotalYield")) TotalYield = src.TotalYield;
+        if (H("HasLongTermBenefit")) HasLongTermBenefit = src.HasLongTermBenefit;
+        if (H("LongTermBenefitCondition")) LongTermBenefitCondition = src.LongTermBenefitCondition;
+        if (H("LongTermBenefitContent")) LongTermBenefitContent = src.LongTermBenefitContent;
+        if (H("BenefitRiskMemo")) BenefitRiskMemo = src.BenefitRiskMemo;
+        if (H("EquityRatio")) EquityRatio = src.EquityRatio;
+        if (H("InterestBearingDebtRatio")) InterestBearingDebtRatio = src.InterestBearingDebtRatio;
+        if (H("RevenueGrowth1Y")) RevenueGrowth1Y = src.RevenueGrowth1Y;
+        if (H("RevenueGrowth3Y")) RevenueGrowth3Y = src.RevenueGrowth3Y;
+        if (H("RevenueGrowth5Y")) RevenueGrowth5Y = src.RevenueGrowth5Y;
+        if (H("RevenueGrowth10Y")) RevenueGrowth10Y = src.RevenueGrowth10Y;
+        if (H("RevenueGrowthRate")) RevenueGrowthRate = src.RevenueGrowthRate;
+        if (H("AverageRevenueGrowth3Y")) AverageRevenueGrowth3Y = src.AverageRevenueGrowth3Y;
+        if (H("OperatingProfitGrowthRate")) OperatingProfitGrowthRate = src.OperatingProfitGrowthRate;
+        if (H("OrdinaryProfitGrowthRate")) OrdinaryProfitGrowthRate = src.OrdinaryProfitGrowthRate;
+        if (H("NetProfitGrowthRate")) NetProfitGrowthRate = src.NetProfitGrowthRate;
+        if (H("EpsGrowthRate")) EpsGrowthRate = src.EpsGrowthRate;
+        if (H("OperatingCF")) OperatingCF = src.OperatingCF;
+        if (H("InvestingCF")) InvestingCF = src.InvestingCF;
+        if (H("FinancingCF")) FinancingCF = src.FinancingCF;
+        if (H("FreeCashFlow", "FreeCF")) FreeCashFlow = src.FreeCashFlow;
+        if (H("OperatingCashFlowMargin")) OperatingCashFlowMargin = src.OperatingCashFlowMargin;
+        if (H("StockPriceChange3M")) StockPriceChange3M = src.StockPriceChange3M;
+        if (H("AverageStockPriceChange3M")) AverageStockPriceChange3M = src.AverageStockPriceChange3M;
+        if (H("AveragePrice3M", "AverageStockPrice3M")) AveragePrice3M = src.AveragePrice3M;
+        if (H("PriceChange3M")) PriceChange3M = src.PriceChange3M;
+        if (H("PriceChangeAverage3M")) PriceChangeAverage3M = src.PriceChangeAverage3M;
+
         IsSampleIndicators = false; // 実データで上書き
         History.Clear();           // 時系列は選択時に再生成
     }

@@ -23,6 +23,18 @@ public partial class MainWindow : Window
                 };
                 return dlg.ShowDialog() == true ? dlg.FileName : null;
             };
+
+            vm.SaveFilePicker = (defaultName) =>
+            {
+                var dlg = new SaveFileDialog
+                {
+                    Title = "テンプレCSVの保存先",
+                    Filter = "CSVファイル (*.csv)|*.csv",
+                    FileName = defaultName,
+                    InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
+                };
+                return dlg.ShowDialog() == true ? dlg.FileName : null;
+            };
         }
     }
 }
