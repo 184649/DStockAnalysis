@@ -11,3 +11,7 @@ publish/
 
 # App local data (never committed)
 *.local.json
+
+# Data acquisition generated artifacts
+tools/.cache/
+tools/output/
