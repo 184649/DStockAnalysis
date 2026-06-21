@@ -136,6 +136,9 @@ public class Stock : ObservableObject
     private OverallJudgement _judgement;
     public OverallJudgement Judgement { get => _judgement; set => SetProperty(ref _judgement, value); }
 
+    /// <summary>指標値が擬似(サンプル)生成かどうか。CSV/API で実データに置換すると false。</summary>
+    public bool IsSampleIndicators { get; set; }
+
     private double _userInterest = 50; // 自分の興味(0-100)。買いたい度に影響。
     public double UserInterest { get => _userInterest; set { if (SetProperty(ref _userInterest, value)) OnPropertyChanged(nameof(JudgementText)); } }
 
@@ -143,6 +146,45 @@ public class Stock : ObservableObject
     public List<TimeSeriesPoint> History { get; set; } = new();
     public StockMemo Memo { get; set; } = new();
     public BuffettCheck BuffettCheck { get; set; } = new();
+
+    /// <summary>
+    /// CSV 取込銘柄(src)の属性・指標を本インスタンスへ取り込む。
+    /// Memo / BuffettCheck / UserInterest / History / スコアは引き継がない(別管理・再計算)。
+    /// </summary>
+    public void CopyIndicatorsFrom(Stock src)
+    {
+        Name = src.Name; Market = src.Market; Sector = src.Sector; Scale = src.Scale;
+        Theme = src.Theme; Description = src.Description; FiscalMonth = src.FiscalMonth;
+        IRUrl = src.IRUrl; DataUpdated = src.DataUpdated;
+        Price = src.Price; MarketCap = src.MarketCap; PER = src.PER; PBR = src.PBR; ROE = src.ROE;
+        MixFactor = src.MixFactor; EPS = src.EPS; BPS = src.BPS; OperatingMargin = src.OperatingMargin;
+        OrdinaryProfitMargin = src.OrdinaryProfitMargin; NetProfitMargin = src.NetProfitMargin;
+        DividendYield = src.DividendYield; PayoutRatio = src.PayoutRatio; Dividend = src.Dividend;
+        DividendTrend = src.DividendTrend; CumulativeDividend = src.CumulativeDividend; DoeAdopted = src.DoeAdopted;
+        ConsecutiveDividendYears = src.ConsecutiveDividendYears; DividendCutCount = src.DividendCutCount;
+        NonDividendCutYears = src.NonDividendCutYears; DividendRemainingYears = src.DividendRemainingYears;
+        BuybackAmount = src.BuybackAmount; ShareholderReturnPolicy = src.ShareholderReturnPolicy;
+        DividendGrowth1Y = src.DividendGrowth1Y; DividendGrowth3Y = src.DividendGrowth3Y;
+        DividendGrowth5Y = src.DividendGrowth5Y; DividendGrowth10Y = src.DividendGrowth10Y;
+        HasShareholderBenefit = src.HasShareholderBenefit; ShareholderBenefit = src.ShareholderBenefit;
+        BenefitContent = src.BenefitContent; BenefitCategory = src.BenefitCategory;
+        BenefitRightsMonth = src.BenefitRightsMonth; RequiredSharesForBenefit = src.RequiredSharesForBenefit;
+        BenefitValue = src.BenefitValue; BenefitYield = src.BenefitYield; TotalYield = src.TotalYield;
+        HasLongTermBenefit = src.HasLongTermBenefit; LongTermBenefitCondition = src.LongTermBenefitCondition;
+        LongTermBenefitContent = src.LongTermBenefitContent; BenefitRiskMemo = src.BenefitRiskMemo;
+        EquityRatio = src.EquityRatio; InterestBearingDebtRatio = src.InterestBearingDebtRatio;
+        RevenueGrowth1Y = src.RevenueGrowth1Y; RevenueGrowth3Y = src.RevenueGrowth3Y;
+        RevenueGrowth5Y = src.RevenueGrowth5Y; RevenueGrowth10Y = src.RevenueGrowth10Y;
+        RevenueGrowthRate = src.RevenueGrowthRate; AverageRevenueGrowth3Y = src.AverageRevenueGrowth3Y;
+        OperatingProfitGrowthRate = src.OperatingProfitGrowthRate; OrdinaryProfitGrowthRate = src.OrdinaryProfitGrowthRate;
+        NetProfitGrowthRate = src.NetProfitGrowthRate; EpsGrowthRate = src.EpsGrowthRate;
+        OperatingCF = src.OperatingCF; InvestingCF = src.InvestingCF; FinancingCF = src.FinancingCF;
+        FreeCashFlow = src.FreeCashFlow; OperatingCashFlowMargin = src.OperatingCashFlowMargin;
+        StockPriceChange3M = src.StockPriceChange3M; AverageStockPriceChange3M = src.AverageStockPriceChange3M;
+        AveragePrice3M = src.AveragePrice3M; PriceChange3M = src.PriceChange3M; PriceChangeAverage3M = src.PriceChangeAverage3M;
+        IsSampleIndicators = false; // 実データで上書き
+        History.Clear();           // 時系列は選択時に再生成
+    }
 
     /// <summary>総合判定の表示文字列。</summary>
     public string JudgementText => Judgement.ToString().Replace('_', '・');

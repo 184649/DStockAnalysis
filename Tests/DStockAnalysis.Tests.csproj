@@ -20,4 +20,11 @@
     <ProjectReference Include="..\DStockAnalysis.csproj" />
   </ItemGroup>
 
+  <!-- JPX マスタをテスト出力にも配置(JpxMasterService / MainViewModel の検証用) -->
+  <ItemGroup>
+    <None Include="..\Data\data_j.xls" Link="Data\data_j.xls">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

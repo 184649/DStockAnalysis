@@ -58,11 +58,12 @@ public class MainViewModelIntegrationTests
     public void OpenAnalysis_BuildsDetail()
     {
         var vm = NewVm();
-        var target = vm.AllStocks.First(s => s.History.Count > 0);
-        vm.OpenAnalysis(target);
+        var target = vm.AllStocks.First();
+        vm.OpenAnalysis(target); // 時系列は遅延生成される
 
         Assert.Same(vm.AnalysisVM, vm.CurrentViewModel);
         Assert.Same(target, vm.AnalysisVM.SelectedStock);
+        Assert.True(target.History.Count > 0);
         Assert.True(vm.AnalysisVM.Charts.Count > 0);
         Assert.Equal(6, vm.AnalysisVM.Radar.Count);
         Assert.Equal(15, vm.AnalysisVM.BuffettItems.Count);

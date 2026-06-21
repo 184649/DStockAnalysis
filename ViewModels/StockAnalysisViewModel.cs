@@ -128,6 +128,7 @@ public class StockAnalysisViewModel : ViewModelBase
 
     private void RebuildDetail()
     {
+        if (SelectedStock != null) _main.EnsureHistory(SelectedStock); // 時系列を遅延生成
         BuildBuffettItems();
         BuildCharts();
         BuildRadar();

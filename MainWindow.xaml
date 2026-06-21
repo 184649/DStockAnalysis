@@ -76,7 +76,10 @@
                 <!-- 右上: データ更新日・操作 -->
                 <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Text="{Binding DataUpdatedText}" Style="{StaticResource Sub}" Margin="0,0,16,0" VerticalAlignment="Center"/>
-                    <Button Content="CSV取込" Command="{Binding ImportCsvCommand}" Margin="0,0,6,0"/>
+                    <Button Content="全銘柄更新(JPX)" Command="{Binding UpdateMasterCommand}" Margin="0,0,6,0"
+                            ToolTip="日本取引所グループの上場銘柄一覧(毎月更新)を再ダウンロードします"/>
+                    <Button Content="CSV取込" Command="{Binding ImportCsvCommand}" Margin="0,0,6,0"
+                            ToolTip="銘柄コードで照合し、実データ指標を上書き取込します"/>
                     <Button Content="サンプル" Command="{Binding LoadSampleCommand}" Margin="0,0,6,0"/>
                     <Button Content="再計算" Command="{Binding RecalculateCommand}" Margin="0,0,6,0"/>
                     <Button Content="保存" Command="{Binding SaveCommand}"/>
@@ -86,7 +89,11 @@
 
         <!-- ===== ステータスバー ===== -->
         <Border DockPanel.Dock="Bottom" Background="#13171C" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
-            <TextBlock Text="{Binding StatusText}" Style="{StaticResource Sub}" Margin="14,5"/>
+            <Grid Margin="14,5">
+                <TextBlock Text="{Binding StatusText}" Style="{StaticResource Sub}" HorizontalAlignment="Left"/>
+                <TextBlock Text="{Binding IndicatorNotice}" Style="{StaticResource Sub}" HorizontalAlignment="Right"
+                           Foreground="#FFB74D"/>
+            </Grid>
         </Border>
 
         <!-- ===== メイン領域 ===== -->
