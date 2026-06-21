@@ -1,0 +1,160 @@
+using DStockAnalysis.Common;
+
+namespace DStockAnalysis.Models;
+
+/// <summary>
+/// 1 銘柄の全データを保持する中心モデル。
+/// 基本情報・バリュエーション・配当/株主還元・財務・成長性・キャッシュフロー・株価変化・
+/// 株主優待・スコア・時系列・メモ・バフェットチェックを含む。
+/// </summary>
+public class Stock : ObservableObject
+{
+    // ===== 基本情報 =====
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Market { get; set; } = "";        // 市場
+    public string Sector { get; set; } = "";        // 業種
+    public string Scale { get; set; } = "";         // 規模
+    public string Theme { get; set; } = "";         // テーマ
+    public string Description { get; set; } = "";   // 企業概要
+    public string FiscalMonth { get; set; } = "";   // 決算月
+    public string IRUrl { get; set; } = "";         // IRリンク
+    public DateTime DataUpdated { get; set; } = DateTime.Today; // データ更新日
+
+    // ===== バリュエーション =====
+    public double Price { get; set; }               // 株価
+    public double MarketCap { get; set; }           // 時価総額(百万円)
+    public double PER { get; set; }
+    public double PBR { get; set; }
+    public double ROE { get; set; }                 // %
+    public double MixFactor { get; set; }           // MIX係数 (PER×PBR)
+    public double EPS { get; set; }
+    public double BPS { get; set; }
+    public double OperatingMargin { get; set; }     // 営業利益率 %
+    public double OrdinaryProfitMargin { get; set; }// 経常利益率 %
+    public double NetProfitMargin { get; set; }     // 純利益率 %
+
+    // ===== 配当・株主還元 =====
+    public double DividendYield { get; set; }       // 配当利回り %
+    public double PayoutRatio { get; set; }         // 配当性向 %
+    public double Dividend { get; set; }            // 1株配当
+    public string DividendTrend { get; set; } = ""; // 配当傾向
+    public bool CumulativeDividend { get; set; }    // 累進配当
+    public bool DoeAdopted { get; set; }            // DOE採用
+    public int ConsecutiveDividendYears { get; set; } // 連続増配年数
+    public int DividendCutCount { get; set; }       // 減配回数
+    public int NonDividendCutYears { get; set; }    // 非減配年数
+    public double DividendRemainingYears { get; set; } // 配当金残年数
+    public double BuybackAmount { get; set; }        // 自社株買い額(百万円)
+    public string ShareholderReturnPolicy { get; set; } = ""; // 株主還元方針
+
+    // 増配率
+    public double DividendGrowth1Y { get; set; }
+    public double DividendGrowth3Y { get; set; }
+    public double DividendGrowth5Y { get; set; }
+    public double DividendGrowth10Y { get; set; }
+
+    // ===== 株主優待 =====
+    public bool HasShareholderBenefit { get; set; }                // 株主優待の有無
+    public string ShareholderBenefit { get; set; } = "";           // 株主優待(短縮表記)
+    public string BenefitContent { get; set; } = "";               // 優待内容(全文)
+    public string BenefitCategory { get; set; } = "";              // 優待カテゴリ
+    public string BenefitRightsMonth { get; set; } = "";           // 優待権利確定月
+    public int RequiredSharesForBenefit { get; set; }              // 必要株数
+    public double BenefitValue { get; set; }                       // 優待価値(円)
+    public double BenefitYield { get; set; }                       // 優待利回り %
+    public double TotalYield { get; set; }                         // 総合利回り %(配当+優待)
+    public bool HasLongTermBenefit { get; set; }                   // 長期保有優遇の有無
+    public string LongTermBenefitCondition { get; set; } = "";     // 継続保有年数条件
+    public string LongTermBenefitContent { get; set; } = "";       // 長期保有優遇内容
+    public string BenefitRiskMemo { get; set; } = "";              // 優待廃止リスクメモ
+
+    // ===== 財務 =====
+    public double EquityRatio { get; set; }                  // 自己資本比率 %
+    public double InterestBearingDebtRatio { get; set; }     // 有利子負債比率 %
+
+    // ===== 成長性 =====
+    public double RevenueGrowth1Y { get; set; }       // 増収率 1年
+    public double RevenueGrowth3Y { get; set; }       // 増収率 3年
+    public double RevenueGrowth5Y { get; set; }       // 増収率 5年
+    public double RevenueGrowth10Y { get; set; }      // 増収率 10年
+    public double RevenueGrowthRate { get; set; }     // 売上高成長率
+    public double AverageRevenueGrowth3Y { get; set; }// 過去3年平均売上高成長率
+    public double OperatingProfitGrowthRate { get; set; } // 営業利益成長率
+    public double OrdinaryProfitGrowthRate { get; set; }  // 経常利益成長率
+    public double NetProfitGrowthRate { get; set; }   // 純利益成長率
+    public double EpsGrowthRate { get; set; }         // EPS成長率
+
+    // ===== キャッシュフロー =====
+    public double OperatingCF { get; set; }           // 営業CF
+    public double InvestingCF { get; set; }           // 投資CF
+    public double FinancingCF { get; set; }           // 財務CF
+    public double FreeCashFlow { get; set; }          // フリーCF
+    public double OperatingCashFlowMargin { get; set; } // 営業CFマージン %
+
+    // ===== 株価変化 =====
+    public double StockPriceChange3M { get; set; }        // 直近3ヶ月株価変化率 %
+    public double AverageStockPriceChange3M { get; set; } // 直近3ヶ月平均株価変化率 %
+    public double AveragePrice3M { get; set; }            // 直近3ヶ月平均株価
+    public double PriceChange3M { get; set; }             // 直近3ヶ月株価変化率(別系列) %
+    public double PriceChangeAverage3M { get; set; }      // 直近3ヶ月平均株価変化率(別系列) %
+
+    // ===== スコア(0-100) =====
+    private double _safetyScore;
+    public double SafetyScore { get => _safetyScore; set => SetProperty(ref _safetyScore, value); }
+
+    private double _growthScore;
+    public double GrowthScore { get => _growthScore; set => SetProperty(ref _growthScore, value); }
+
+    private double _profitabilityScore;
+    public double ProfitabilityScore { get => _profitabilityScore; set => SetProperty(ref _profitabilityScore, value); }
+
+    private double _returnScore;
+    public double ReturnScore { get => _returnScore; set => SetProperty(ref _returnScore, value); }
+
+    private double _efficiencyScore;
+    public double EfficiencyScore { get => _efficiencyScore; set => SetProperty(ref _efficiencyScore, value); }
+
+    private double _valuationScore;
+    public double ValuationScore { get => _valuationScore; set => SetProperty(ref _valuationScore, value); }
+
+    private double _longTermScore;
+    public double LongTermScore { get => _longTermScore; set => SetProperty(ref _longTermScore, value); }
+
+    private double _revaluationScore;
+    public double RevaluationScore { get => _revaluationScore; set => SetProperty(ref _revaluationScore, value); }
+
+    private double _buffettScore;
+    public double BuffettScore { get => _buffettScore; set => SetProperty(ref _buffettScore, value); }
+
+    private double _wantToBuyScore;
+    public double WantToBuyScore { get => _wantToBuyScore; set => SetProperty(ref _wantToBuyScore, value); }
+
+    private double _overallScore;
+    public double OverallScore { get => _overallScore; set => SetProperty(ref _overallScore, value); }
+
+    private OverallJudgement _judgement;
+    public OverallJudgement Judgement { get => _judgement; set => SetProperty(ref _judgement, value); }
+
+    private double _userInterest = 50; // 自分の興味(0-100)。買いたい度に影響。
+    public double UserInterest { get => _userInterest; set { if (SetProperty(ref _userInterest, value)) OnPropertyChanged(nameof(JudgementText)); } }
+
+    // ===== ぶら下がりデータ =====
+    public List<TimeSeriesPoint> History { get; set; } = new();
+    public StockMemo Memo { get; set; } = new();
+    public BuffettCheck BuffettCheck { get; set; } = new();
+
+    /// <summary>総合判定の表示文字列。</summary>
+    public string JudgementText => Judgement.ToString().Replace('_', '・');
+
+    /// <summary>総合評価のレターグレード(S/A/B/C/D)。</summary>
+    public string OverallGrade => Common.Grades.Letter(OverallScore);
+
+    /// <summary>各レーダー軸のレターグレード。</summary>
+    public string SafetyGrade => Common.Grades.Letter(SafetyScore);
+    public string GrowthGrade => Common.Grades.Letter(GrowthScore);
+    public string ProfitabilityGrade => Common.Grades.Letter(ProfitabilityScore);
+    public string ReturnGrade => Common.Grades.Letter(ReturnScore);
+    public string EfficiencyGrade => Common.Grades.Letter(EfficiencyScore);
+    public string ValuationGrade => Common.Grades.Letter(ValuationScore);
+}
