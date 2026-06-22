@@ -12,8 +12,10 @@
 
 ## 技術構成
 
-- Windows デスクトップ / **C# / WPF / .NET 8 (`net8.0-windows`)**
-- **MVVM** 構成(Models / ViewModels / Views / Services を分離)
+- **2 エディション**: Windows デスクトップ(**WPF**)と **Web**(**ASP.NET Core**)。共通ロジックは
+  `DStockAnalysis.Core`(`net8.0`)に集約し両方が参照(詳細は [エディション構成](#エディション構成デスクトップ--web))。
+- C# / **.NET 8** / **MVVM**(デスクトップは Models / ViewModels / Views / Services 分離)
+- Web 版は ASP.NET Core 最小API + 静的フロント(SPA)。Linux(ConoHa VPS)で常駐可能。
 - ローカル保存(**JSON**、`%AppData%\DStockAnalysis`)
 - **全銘柄を自動取得**: 日本取引所グループ(JPX)公開の「東証上場銘柄一覧(`data_j.xls`)」を同梱し、
   起動時に全上場銘柄(プライム/スタンダード/グロースの内国株式・約3,700銘柄)を自動ロード。
@@ -30,12 +32,47 @@
 > を自動生成して表示し、スクリーニングや比較をすぐ体験できるようにしています。実データに置き換える場合は
 > **CSV取込**(`sample_stocks.csv` と同じ列名)を使ってください。擬似値の銘柄数は画面右下に表示されます。
 
+---
+
+## エディション構成(デスクトップ / Web)
+
+本アプリは **同一のドメインロジックを共有する 2 つのフロントエンド**を持ちます。
+スコア計算・擬似指標生成・JPX 一覧解析・CSV 列単位マージなどの中核ロジックは
+`DStockAnalysis.Core`(`net8.0` クラスライブラリ)に集約し、両エディションが参照します。
+
+| プロジェクト | 役割 | 実行環境 |
+|---|---|---|
+| `DStockAnalysis.Core` | 共有ドメイン(Models/Services/Common) | net8.0(OS非依存) |
+| `DStockAnalysis`(WPF) | デスクトップ版 UI | Windows |
+| `DStockAnalysis.Web` | **Web 版**(ASP.NET Core API + 静的フロント) | Windows / **Linux(ConoHa VPS)** |
+| `Tests` / `Tests.Web` | xUnit 試験 | net8.0 |
+
+> **Web 版の特徴**
+> - ブラウザから 3 画面(スクリーニング/個別分析/比較)をすべて利用可能。条件付き書式・スコアレーダー・
+>   バフェットチェック・チャート・CSV取込・テンプレ出力・JPX更新に対応。
+> - サーバ常駐の **自動取得バックグラウンドサービス**が、robots.txt を順守し低頻度で **全銘柄の主要指標**
+>   (PER/PBR/ROE/配当利回り/時価総額/EPS 等)を巡回取得し、列単位マージで反映します
+>   (`tools/fetch_data.py` の C# 移植)。`appsettings` で有効/無効・間隔・対象範囲を制御できます。
+> - データは **ローカル単独の WPF 版とは別に、サーバ側の `DataDir`**(既定 `DStockAnalysis.Web/data`)へ
+>   JSON 保存されます。
+
+Web 版の起動・デプロイ手順は後述の **[Web 版ローカル起動](#web-版ローカル起動)** /
+**[ConoHa VPS デプロイ](#conoha-vps-へのデプロイ)** を参照してください。
+
+---
+
 ## 動作要件
 
+### デスクトップ版(WPF)
 - Windows 10 / 11(64bit)
 - .NET 8 SDK もしくはデスクトップランタイム
   - https://dotnet.microsoft.com/download/dotnet/8.0
 - 推奨解像度: 1920×1080(最低 1366×768、最大化表示前提)
+
+### Web 版
+- サーバ: Linux(Ubuntu 22.04/24.04 LTS、ConoHa VPS を想定)または Windows
+- .NET 8 SDK(ビルド)/ ASP.NET Core 8 ランタイム(実行のみ)
+- クライアント: 最新ブラウザ(Chrome/Edge/Firefox/Safari)
 
 ## ローカル環境構築手順(詳細)
 
@@ -102,6 +139,151 @@ dotnet publish DStockAnalysis.csproj -c Release -r win-x64 --self-contained true
 | 一覧が空/サンプル14件のみ | `Data\data_j.xls` が存在するか確認(同梱物)。または **全銘柄更新(JPX)** を押す |
 | 文字が□になる | Windows に游ゴシック/メイリオがあるか確認(通常は標準搭載) |
 | **run.bat がすぐ閉じる/何も起きない** | 多くは `C:\Program Files` 配下に置いたことによる**ビルド時の書き込み権限不足**が原因。フォルダごと **ドキュメント等の書き込み可能な場所にコピー**して再実行してください。`run.bat` はビルド失敗時に既存ビルドでの起動を試み、原因をウィンドウに表示して `pause` で待機します(自動では閉じません)。 |
+
+## Web 版ローカル起動
+
+開発・動作確認用にローカルで Web 版を起動する手順です(Windows / macOS / Linux 共通)。
+
+1. .NET 8 SDK を導入(`dotnet --version` で 8.x を確認)。
+2. リポジトリ直下で次を実行:
+   ```
+   dotnet run --project DStockAnalysis.Web
+   ```
+   - 既定で `http://localhost:5000` で待ち受けます。ポートを変えるには:
+     ```
+     dotnet run --project DStockAnalysis.Web --urls http://localhost:5080
+     ```
+   - 初回起動時、同梱 `Data/data_j.xls` から全上場銘柄(約3,700)を読み込みます。
+3. ブラウザで `http://localhost:5000`(または指定ポート)を開く。
+4. 自動取得(スクレイピング)は **ローカル(Development)では既定で無効**です。試したい場合のみ:
+   ```
+   dotnet run --project DStockAnalysis.Web --urls http://localhost:5080 -- --Fetch:Enabled=true
+   ```
+   ※ 対象サイトへ低頻度(既定8秒間隔)でアクセスします。robots.txt を順守します。
+
+> データ(銘柄・メモ・取得キャッシュ)は `DStockAnalysis.Web/data` 配下の JSON に保存され、`.gitignore` 済みです。
+
+---
+
+## ConoHa VPS へのデプロイ
+
+ConoHa VPS(Ubuntu 22.04/24.04 LTS、メモリ 1GB 以上推奨)に Web 版を常駐させ、
+**全銘柄の主要指標を自動取得**しながら社内/個人用ダッシュボードとして公開する手順です。
+
+### 手順 0: VPS の準備
+- ConoHa コントロールパネルで Ubuntu のサーバーを作成。SSH 鍵を登録してログイン。
+- 一般ユーザー(例 `deploy`)で作業し、必要時のみ `sudo` を使う想定。
+
+### 手順 1: .NET 8 SDK の導入
+```bash
+sudo apt-get update
+sudo apt-get install -y dotnet-sdk-8.0
+dotnet --info   # 8.x を確認
+```
+> パッケージが見つからない場合は Microsoft の手順に従い `packages-microsoft-prod.deb` を追加してから上記を実行します。
+
+### 手順 2: ソース取得とビルド(publish)
+```bash
+sudo mkdir -p /var/www && sudo chown $USER /var/www
+cd /var/www
+git clone https://github.com/184649/DStockAnalysis.git
+cd DStockAnalysis
+dotnet publish DStockAnalysis.Web -c Release -o /var/www/dstock
+```
+- 同梱の `Data/data_j.xls` も発行先へコピーされ、初回起動で全銘柄を読み込みます。
+- データ保存先を固定したい場合は `appsettings.Production.json` の `"DataDir"` を絶対パス
+  (例 `/var/lib/dstock`)に設定し、そのディレクトリを作成・書込可能にします。
+
+### 手順 3: systemd サービス化(常駐 + 自動再起動)
+`/etc/systemd/system/dstock.service` を作成:
+```ini
+[Unit]
+Description=DStockAnalysis Web
+After=network.target
+
+[Service]
+WorkingDirectory=/var/www/dstock
+ExecStart=/usr/bin/dotnet /var/www/dstock/DStockAnalysis.Web.dll
+Restart=always
+RestartSec=10
+User=deploy
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=ASPNETCORE_URLS=http://127.0.0.1:5080
+# 自動取得を止める場合は次行を有効化: Environment=Fetch__Enabled=false
+
+[Install]
+WantedBy=multi-user.target
+```
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now dstock
+sudo systemctl status dstock      # Active(running) を確認
+curl http://127.0.0.1:5080/api/meta   # 全銘柄数が返れば成功
+```
+> **本番(Production)では自動取得が既定で有効**(`appsettings.Production.json` の `Fetch:Enabled=true`)です。
+> robots.txt 順守・既定8秒間隔で全銘柄を巡回取得し、6日以内に取得済みの銘柄はスキップ(週次更新相当)。
+> サーバ負荷・規約に配慮した低頻度運用です。停止したい場合は上記 `Fetch__Enabled=false` を設定して再起動。
+
+### 手順 4: nginx でリバースプロキシ(80番ポート公開)
+```bash
+sudo apt-get install -y nginx
+```
+`/etc/nginx/sites-available/dstock` を作成:
+```nginx
+server {
+    listen 80;
+    server_name _;   # ドメインがあれば記入
+
+    location / {
+        proxy_pass         http://127.0.0.1:5080;
+        proxy_http_version 1.1;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+}
+```
+```bash
+sudo ln -s /etc/nginx/sites-available/dstock /etc/nginx/sites-enabled/dstock
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+### 手順 5: ファイアウォール / HTTPS(任意)
+```bash
+sudo ufw allow OpenSSH
+sudo ufw allow 'Nginx HTTP'
+sudo ufw enable
+```
+- ConoHa の **セキュリティグループ**でも 80(/443)番の許可が必要です。
+- 独自ドメインがある場合は `certbot`(Let's Encrypt)で HTTPS 化を推奨:
+  ```bash
+  sudo apt-get install -y certbot python3-certbot-nginx
+  sudo certbot --nginx -d your-domain.example
+  ```
+- 公開範囲を限定したい場合は nginx の `allow/deny` や Basic 認証、ConoHa セキュリティグループで送信元 IP を制限してください
+  (本アプリに認証機能はありません)。
+
+### 手順 6: 更新(再デプロイ)
+```bash
+cd /var/www/DStockAnalysis && git pull
+dotnet publish DStockAnalysis.Web -c Release -o /var/www/dstock
+sudo systemctl restart dstock
+```
+
+### 自動取得の設定(`appsettings.Production.json` の `Fetch`)
+| キー | 既定 | 説明 |
+|---|---|---|
+| `Enabled` | `true` | 自動取得の有効/無効 |
+| `Scope` | `"all"` | `all`=全銘柄 / `watchlist`=`DataDir/codes.txt` の銘柄のみ |
+| `DelaySeconds` | `8` | リクエスト間隔の基準秒(robots の Crawl-delay と大きい方を採用) |
+| `MaxAgeDays` | `6` | この日数以内に取得済みの銘柄は再取得しない(週次運用) |
+| `CycleRestHours` | `24` | 全銘柄1巡後、次巡まで待つ時間 |
+| `UseKabutan` | `false` | 株探も対象に含める(Crawl-delay 3秒順守) |
+
+> 全銘柄(約3,700)を 8 秒間隔で巡回するため 1 巡には時間がかかります。短期売買用ではないため
+> この低速・週次運用で十分です。取得状況は `GET /api/admin/fetch/status` で確認できます。
+
+---
 
 ## データの更新(JPX 月次)
 
@@ -175,9 +357,17 @@ JPX の上場銘柄一覧は **毎月更新**されます(月末営業日基準)
 ## テストの実行
 
 ```
-dotnet test Tests/DStockAnalysis.Tests.csproj
+dotnet test DStockAnalysis.sln
 ```
-単体テスト(Service/Model/Common)と結合テスト(画面横断フロー)を実行します。
+- `Tests/`(WPF/Core): 単体(Service/Model/Common)＋結合(ViewModel 画面横断フロー)= **77 件**
+- `Tests.Web/`(Web): 単体(スクレイパ純粋関数)＋結合(StockStore・HTTP API)= **25 件**
+- 合計 **102 件・0 失敗**(2026/06/22 実行)。
+
+個別実行も可能です:
+```
+dotnet test Tests/DStockAnalysis.Tests.csproj        # WPF/Core
+dotnet test Tests.Web/DStockAnalysis.Web.Tests.csproj # Web
+```
 詳細は `docs/単体試験項目書.md` / `docs/結合試験項目書.md` を参照してください。
 
 ## ドキュメント
@@ -285,22 +475,32 @@ CSV を再取り込みしてもメモ/チェックは銘柄コードで再マー
 ## プロジェクト構成
 
 ```
-DStockAnalysis.csproj
-app.manifest
-App.xaml / App.xaml.cs           … リソース・VM→Viewマッピング・チャートテンプレート
-MainWindow.xaml / .cs            … 上部ナビ・データ更新日・CSV取込/保存
-Themes/DarkTheme.xaml            … ダーク(Power BI風)テーマ
-Converters/Converters.cs         … 条件付き書式・フラグ・色変換
-Common/ObservableObject.cs
-Models/                          … Stock, TimeSeriesPoint, BuffettCheck, StockMemo,
-                                    ScreeningCriteria, ScreeningPreset, AppData, Enums
-Services/                        … CsvImportService, DataStorageService, ScoreService,
-                                    SampleDataService, PresetService
-ViewModels/                      … Main, Screening, StockAnalysis, Comparison,
-                                    ChartModels, RelayCommand, ViewModelBase
-Views/                           … ScreeningView, StockAnalysisView, ComparisonView
-sample_stocks.csv
-run.bat
+DStockAnalysis.sln                 … 全プロジェクトのソリューション
+
+DStockAnalysis.Core/               … 共有ドメイン(net8.0、WPF/Web 双方が参照)
+  Common/                          … ObservableObject, Grades
+  Models/                          … Stock, TimeSeriesPoint, BuffettCheck, StockMemo,
+                                      ScreeningCriteria, ScreeningPreset, AppData, Enums
+  Services/                        … CsvImportService, DataStorageService, ScoreService,
+                                      SampleDataService, PresetService, JpxMasterService,
+                                      IndicatorSeedService, ReferenceLinkService
+
+DStockAnalysis.csproj(WPF)        … デスクトップ版(Core を参照)
+  App.xaml(.cs) / MainWindow / Themes/DarkTheme.xaml / Converters/ / ViewModels/ / Views/
+  app.manifest / Data/data_j.xls
+
+DStockAnalysis.Web/                … Web 版(ASP.NET Core、Core を参照)
+  Program.cs                       … 最小API・DI・静的配信
+  Services/StockStore.cs           … サーバ側の銘柄ストア(WPF の MainViewModel 相当)
+  Services/IndicatorFetchService.cs… 指標スクレイパ(fetch_data.py の C# 移植・robots順守)
+  Services/IndicatorFetchHostedService.cs … 全銘柄を巡回取得する常駐サービス
+  Models/Dtos.cs                   … API 用 DTO
+  wwwroot/                         … index.html, css/styles.css, js/app.js(3画面SPA)
+  appsettings*.json
+
+Tests/                             … WPF/Core の xUnit(単体・結合)
+Tests.Web/                         … Web の xUnit(単体・結合, WebApplicationFactory)
+sample_stocks.csv / run.bat / tools/ / docs/
 ```
 
 ## 将来拡張の指針

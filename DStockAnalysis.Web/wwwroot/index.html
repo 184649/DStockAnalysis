@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DStockAnalysis - 投資銘柄探索ダッシュボード</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <header>
+    <div class="logo">
+      <div class="badge">D</div>
+      <div>
+        <div class="title">DStockAnalysis</div>
+        <div class="sub">投資研究ダッシュボード</div>
+      </div>
+    </div>
+    <nav>
+      <button data-view="screening" class="active">銘柄スクリーニング</button>
+      <button data-view="analysis">個別銘柄分析</button>
+      <button data-view="comparison">銘柄比較</button>
+    </nav>
+    <div class="spacer"></div>
+    <div class="toolbar">
+      <div class="meta" id="metaInfo">読み込み中...</div>
+      <input type="file" id="csvFile" accept=".csv" style="display:none" />
+      <button class="btn" id="btnImport">CSV取込</button>
+      <button class="btn" id="btnTemplate">テンプレ出力</button>
+      <button class="btn" id="btnUpdateMaster">全銘柄更新(JPX)</button>
+      <button class="btn accent" id="btnFetch">実データ自動取得</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- ===== スクリーニング ===== -->
+    <section id="screening" class="view active">
+      <aside class="filter-panel" id="filterPanel"></aside>
+      <div class="results">
+        <div class="presets" id="presets"></div>
+        <div class="result-bar">
+          <span id="resultText">―</span>
+          <span id="indicatorNotice"></span>
+        </div>
+        <div class="table-wrap">
+          <table class="grid" id="screenTable"></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 個別分析 ===== -->
+    <section id="analysis" class="view">
+      <aside class="stock-list">
+        <input type="text" id="analysisSearch" placeholder="コード・銘柄名で検索" />
+        <div class="items" id="analysisItems"></div>
+      </aside>
+      <div class="detail" id="analysisDetail">
+        <div class="empty">左の一覧から銘柄を選択してください。</div>
+      </div>
+    </section>
+
+    <!-- ===== 比較 ===== -->
+    <section id="comparison" class="view">
+      <aside class="stock-list">
+        <input type="text" id="compareSearch" placeholder="比較に追加する銘柄を検索" />
+        <div class="items" id="compareItems"></div>
+      </aside>
+      <div class="results">
+        <div class="chips" id="compareChips"></div>
+        <div class="compare-body" id="compareBody">
+          <div class="empty">左の一覧から銘柄を選んで比較に追加してください(最大6件)。</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
