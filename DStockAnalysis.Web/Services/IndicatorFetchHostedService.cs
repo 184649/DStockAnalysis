@@ -1,12 +1,12 @@
-using System.Text.Json;
-
 namespace DStockAnalysis.Web.Services;
 
 /// <summary>自動取得の設定(appsettings の "Fetch" セクション)。</summary>
 public class FetchOptions
 {
-    /// <summary>自動取得を有効にするか。</summary>
+    /// <summary>バックグラウンドの全銘柄巡回取得を有効にするか。</summary>
     public bool Enabled { get; set; } = false;
+    /// <summary>個別分析で銘柄を開いた時に、その銘柄の実値をその場で取得するか。</summary>
+    public bool OnDemand { get; set; } = true;
     /// <summary>対象範囲: "all"=全銘柄 / "watchlist"=codes.txt の銘柄のみ。</summary>
     public string Scope { get; set; } = "all";
     /// <summary>リクエスト間隔の基準秒(robots の Crawl-delay と大きい方を採用)。</summary>
@@ -44,23 +44,21 @@ public class FetchStatus
 public class IndicatorFetchHostedService : BackgroundService
 {
     private readonly StockStore _store;
-    private readonly IndicatorFetchService _fetcher;
+    private readonly IIndicatorFetcher _fetcher;
+    private readonly FetchCoordinator _coordinator;
     private readonly FetchOptions _opt;
     private readonly ILogger<IndicatorFetchHostedService> _log;
     private readonly FetchStatus _status = new();
     private readonly object _statusLock = new();
-    private readonly string _cacheFile;
-    private Dictionary<string, DateTime> _cache = new();
 
-    public IndicatorFetchHostedService(StockStore store, IndicatorFetchService fetcher,
-        FetchOptions opt, ILogger<IndicatorFetchHostedService> log)
+    public IndicatorFetchHostedService(StockStore store, IIndicatorFetcher fetcher,
+        FetchCoordinator coordinator, FetchOptions opt, ILogger<IndicatorFetchHostedService> log)
     {
         _store = store;
         _fetcher = fetcher;
+        _coordinator = coordinator;
         _opt = opt;
         _log = log;
-        _cacheFile = Path.Combine(_store.DataDirectory, "fetch_state.json");
-        _cache = LoadCache();
         lock (_statusLock) { _status.Enabled = _opt.Enabled; _status.Scope = _opt.Scope; }
     }
 
@@ -119,35 +117,25 @@ public class IndicatorFetchHostedService : BackgroundService
 
         try
         {
-            var now = DateTime.UtcNow;
-            int batchSinceSave = 0;
             foreach (var code in codes)
             {
                 ct.ThrowIfCancellationRequested();
                 lock (_statusLock) _status.CurrentCode = code;
 
-                if (!force && _cache.TryGetValue(code, out var last) && (now - last).TotalDays < _opt.MaxAgeDays)
+                if (!force && _coordinator.IsFresh(code))
                 {
                     lock (_statusLock) { _status.Skipped++; _status.Processed++; }
                     continue;
                 }
 
-                var values = await _fetcher.FetchAsync(code, _opt.UseKabutan, ct);
-                if (values.Count > 0)
-                {
-                    var applied = _store.ApplyFetched(new[] { (code, values) });
-                    _cache[code] = DateTime.UtcNow;
-                    lock (_statusLock) _status.Updated += applied;
-                    if (++batchSinceSave >= 20) { SaveCache(); batchSinceSave = 0; }
-                }
-                lock (_statusLock) _status.Processed++;
+                bool updated = await _coordinator.FetchOneAsync(code, force, ct);
+                lock (_statusLock) { if (updated) _status.Updated++; _status.Processed++; }
 
                 // robots の Crawl-delay と基準間隔の大きい方を採用
                 var cd = await _fetcher.GetCrawlDelayAsync($"https://irbank.net/{code}", ct) ?? 0;
                 var wait = Math.Max(_opt.DelaySeconds, cd);
                 await DelaySafe(TimeSpan.FromSeconds(wait), ct);
             }
-            SaveCache();
             _log.LogInformation("自動取得が1巡完了: 更新 {Updated} / スキップ {Skipped}",
                 Snapshot().Updated, Snapshot().Skipped);
         }
@@ -178,22 +166,5 @@ public class IndicatorFetchHostedService : BackgroundService
     private static async Task DelaySafe(TimeSpan span, CancellationToken ct)
     {
         try { await Task.Delay(span, ct); } catch (OperationCanceledException) { }
-    }
-
-    private Dictionary<string, DateTime> LoadCache()
-    {
-        try
-        {
-            if (File.Exists(_cacheFile))
-                return JsonSerializer.Deserialize<Dictionary<string, DateTime>>(File.ReadAllText(_cacheFile))
-                       ?? new();
-        }
-        catch { }
-        return new();
-    }
-
-    private void SaveCache()
-    {
-        try { File.WriteAllText(_cacheFile, JsonSerializer.Serialize(_cache)); } catch { }
     }
 }

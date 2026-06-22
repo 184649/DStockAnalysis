@@ -24,6 +24,8 @@ builder.Services.AddSingleton(fetchOptions);
 // アプリケーションサービス(シングルトン)
 builder.Services.AddSingleton<StockStore>();
 builder.Services.AddSingleton<IndicatorFetchService>();
+builder.Services.AddSingleton<IIndicatorFetcher>(sp => sp.GetRequiredService<IndicatorFetchService>());
+builder.Services.AddSingleton<FetchCoordinator>();
 builder.Services.AddSingleton<PresetService>();
 builder.Services.AddSingleton<IndicatorFetchHostedService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<IndicatorFetchHostedService>());
@@ -68,11 +70,27 @@ app.MapPost("/api/screen", (ScreeningCriteria criteria, StockStore store) =>
 });
 
 // ===== 個別銘柄(詳細 + 時系列 + リンク) =====
-app.MapGet("/api/stocks/{code}", (string code, StockStore store) =>
+// オンデマンド取得: 銘柄を開いた時、指標がサンプル値(または refresh 指定)なら
+// その場で実値を取得して反映する(robots順守。取得済みはキャッシュで即時返却)。
+app.MapGet("/api/stocks/{code}", async (string code, bool? refresh,
+    StockStore store, FetchCoordinator coord, FetchOptions opt, CancellationToken ct) =>
 {
     var s = store.Get(code);
     if (s == null) return Results.NotFound();
-    return Results.Ok(new { stock = s, links = store.Links(code) });
+
+    if (opt.OnDemand && (refresh == true || s.IsSampleIndicators))
+    {
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(20)); // 遅いサイトでも応答を返す
+            await coord.FetchOneAsync(code, refresh == true, cts.Token);
+            s = store.Get(code) ?? s; // 反映後の最新を返す
+        }
+        catch { /* 取得失敗時は既存(サンプル)値のまま返す */ }
+    }
+
+    return Results.Ok(new { stock = s, links = store.Links(code), lastFetched = coord.LastFetched(code) });
 });
 
 // ===== 比較(複数銘柄の詳細) =====

@@ -50,9 +50,12 @@
 > **Web 版の特徴**
 > - ブラウザから 3 画面(スクリーニング/個別分析/比較)をすべて利用可能。条件付き書式・スコアレーダー・
 >   バフェットチェック・チャート・CSV取込・テンプレ出力・JPX更新に対応。
-> - サーバ常駐の **自動取得バックグラウンドサービス**が、robots.txt を順守し低頻度で **全銘柄の主要指標**
->   (PER/PBR/ROE/配当利回り/時価総額/EPS 等)を巡回取得し、列単位マージで反映します
->   (`tools/fetch_data.py` の C# 移植)。`appsettings` で有効/無効・間隔・対象範囲を制御できます。
+> - **指標は実データを取得**します。個別分析で銘柄を開いた瞬間に、その銘柄の実値
+>   (PER/PBR/ROE/配当利回り/時価総額/EPS 等)を **オンデマンドで取得**して表示します(取得済みはキャッシュで即時)。
+>   さらにサーバ常駐の **自動取得バックグラウンドサービス**が robots.txt を順守し低頻度で **全銘柄**を巡回取得し、
+>   一覧も順次実データ化します(`tools/fetch_data.py` の C# 移植)。両者は取得キャッシュ(`fetch_state.json`)を共有し
+>   二重取得を防ぎます。`appsettings` で有効/無効・間隔・対象範囲を制御できます。
+> - 実値が未取得の銘柄は擬似(サンプル)値で表示し、画面上で実データ/サンプルを区別表示します。
 > - データは **ローカル単独の WPF 版とは別に、サーバ側の `DataDir`**(既定 `DStockAnalysis.Web/data`)へ
 >   JSON 保存されます。
 
@@ -155,11 +158,14 @@ dotnet publish DStockAnalysis.csproj -c Release -r win-x64 --self-contained true
      ```
    - 初回起動時、同梱 `Data/data_j.xls` から全上場銘柄(約3,700)を読み込みます。
 3. ブラウザで `http://localhost:5000`(または指定ポート)を開く。
-4. 自動取得(スクレイピング)は **ローカル(Development)では既定で無効**です。試したい場合のみ:
-   ```
-   dotnet run --project DStockAnalysis.Web --urls http://localhost:5080 -- --Fetch:Enabled=true
-   ```
-   ※ 対象サイトへ低頻度(既定8秒間隔)でアクセスします。robots.txt を順守します。
+4. **個別分析で銘柄を開くと、その銘柄の実値を自動取得**します(オンデマンド・既定有効)。
+   初回は外部サイトから取得するため数秒かかり、以降はキャッシュで即時表示されます。
+   - **バックグラウンドの全銘柄巡回取得**はローカル(Development)では既定で無効です。試す場合:
+     ```
+     dotnet run --project DStockAnalysis.Web --urls http://localhost:5080 -- --Fetch:Enabled=true
+     ```
+   - オンデマンド取得自体を止めるには `-- --Fetch:OnDemand=false`。
+   ※ いずれも対象サイトへ robots.txt 順守・低頻度(既定8秒間隔)でアクセスします。
 
 > データ(銘柄・メモ・取得キャッシュ)は `DStockAnalysis.Web/data` 配下の JSON に保存され、`.gitignore` 済みです。
 
@@ -273,7 +279,8 @@ sudo systemctl restart dstock
 ### 自動取得の設定(`appsettings.Production.json` の `Fetch`)
 | キー | 既定 | 説明 |
 |---|---|---|
-| `Enabled` | `true` | 自動取得の有効/無効 |
+| `Enabled` | `true` | バックグラウンド全銘柄巡回取得の有効/無効 |
+| `OnDemand` | `true` | 個別分析で銘柄を開いた時に、その銘柄の実値をその場で取得する |
 | `Scope` | `"all"` | `all`=全銘柄 / `watchlist`=`DataDir/codes.txt` の銘柄のみ |
 | `DelaySeconds` | `8` | リクエスト間隔の基準秒(robots の Crawl-delay と大きい方を採用) |
 | `MaxAgeDays` | `6` | この日数以内に取得済みの銘柄は再取得しない(週次運用) |
