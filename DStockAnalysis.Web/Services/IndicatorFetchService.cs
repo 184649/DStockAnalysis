@@ -41,21 +41,44 @@ public class IndicatorFetchService : IIndicatorFetcher
     {
         var row = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-        await MergeFrom(row, $"https://irbank.net/{code}", ParseIrBank, ct);
-        await MergeFrom(row, $"https://minkabu.jp/stock/{code}", ParseMinkabu, ct);
+        await MergeFrom(row, code, $"https://irbank.net/{code}", ParseIrBank, ct);
+        await MergeFrom(row, code, $"https://minkabu.jp/stock/{code}", ParseMinkabu, ct);
         if (useKabutan)
-            await MergeFrom(row, $"https://kabutan.jp/stock/?code={code}", ParseKabutan, ct);
+            await MergeFrom(row, code, $"https://kabutan.jp/stock/?code={code}", ParseKabutan, ct);
 
+        Derive(row); // 取得した実値から派生指標(MIX/BPS/配当/配当性向)を算出
         return row;
     }
 
-    private async Task MergeFrom(Dictionary<string, string> row, string url,
-        Func<string, Dictionary<string, string>> parse, CancellationToken ct)
+    private async Task MergeFrom(Dictionary<string, string> row, string code, string url,
+        Func<string, string, Dictionary<string, string>> parse, CancellationToken ct)
     {
         var html = await FetchAsync(url, ct);
         if (html == null) return;
-        foreach (var kv in parse(html))
+        foreach (var kv in parse(html, code))
             if (!row.ContainsKey(kv.Key)) row[kv.Key] = kv.Value;
+    }
+
+    /// <summary>取得済みの実値から、サイトに直接出ない派生指標を算出して補う。</summary>
+    public static void Derive(Dictionary<string, string> row)
+    {
+        double? G(string k) => row.TryGetValue(k, out var v) && double.TryParse(v, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : null;
+        void P(string k, double v) => row[k] = Math.Round(v, 2).ToString(CultureInfo.InvariantCulture);
+
+        var per = G("PER"); var pbr = G("PBR"); var price = G("Price");
+        var dy = G("DividendYield"); var eps = G("EPS");
+
+        if (per is > 0 && pbr is > 0) P("MixFactor", per.Value * pbr.Value);
+        if (price is > 0 && pbr is > 0) row["BPS"] = Math.Round(price.Value / pbr.Value).ToString(CultureInfo.InvariantCulture);
+
+        // 1株配当 = 株価 × 配当利回り(%) / 100
+        if (price is > 0 && dy is > 0)
+        {
+            double dividend = price.Value * dy.Value / 100.0;
+            P("Dividend", dividend);
+            // 配当性向(%) = 1株配当 / EPS × 100(サイトに直接出ないため実値から算出)
+            if (eps is > 0) P("PayoutRatio", dividend / eps.Value * 100.0);
+        }
     }
 
     /// <summary>1ページ取得。robots 不許可なら null。</summary>
@@ -123,18 +146,27 @@ public class IndicatorFetchService : IIndicatorFetcher
 
     // ---------- サイト別の抽出 ----------
 
-    public static Dictionary<string, string> ParseMinkabu(string html)
+    public static Dictionary<string, string> ParseMinkabu(string html, string code)
     {
         var t = Strip(html);
         var d = new Dictionary<string, string>();
-        Put(d, "Price", Find(t, @"現在値[^0-9\-]*([0-9,]+(?:\.[0-9]+)?)"));
+
+        // 株価: JSON-LD の offers.price(当該銘柄URLに紐づくもの)が最も確実。
+        // 例: ...stock/7203","offers":{"@type":"Offer","price":"2741.5",...
+        var pm = Regex.Match(html, $@"stock/{Regex.Escape(code)}""[^}}]*?""price""\s*:\s*""([0-9,]+\.?[0-9]*)""");
+        if (!pm.Success) // 予備: 最初の offers.price
+            pm = Regex.Match(html, @"""offers""\s*:\s*\{[^}]*?""price""\s*:\s*""([0-9,]+\.?[0-9]*)""");
+        if (pm.Success) Put(d, "Price", Num(pm.Groups[1].Value)?.ToString(CultureInfo.InvariantCulture));
+
         Put(d, "PER", Find(t, @"PER[^0-9\-]*([0-9,]+\.?[0-9]*)\s*倍"));
         Put(d, "PBR", Find(t, @"PBR[^0-9\-]*([0-9,]+\.?[0-9]*)\s*倍"));
         Put(d, "DividendYield", Find(t, @"配当利回り[^0-9\-]*([0-9]+\.?[0-9]*)\s*[%％]"));
+        // 時価総額(百万円・正確値)。例: 時価総額 43,301,958百万円
+        Put(d, "MarketCap", Find(t, @"時価総額[^0-9\-]*([0-9,]+)\s*百万円"));
         return d;
     }
 
-    public static Dictionary<string, string> ParseIrBank(string html)
+    public static Dictionary<string, string> ParseIrBank(string html, string code)
     {
         var t = Strip(html);
         var d = new Dictionary<string, string>();
@@ -143,33 +175,32 @@ public class IndicatorFetchService : IIndicatorFetcher
         Put(d, "PBR", Find(t, @"PBR[^0-9\-]*([0-9,]+\.?[0-9]*)\s*倍"));
         Put(d, "DividendYield", Find(t, @"配当利回り[^0-9\-]*([0-9]+\.?[0-9]*)\s*[%％]"));
         Put(d, "EPS", Find(t, @"\bEPS[^0-9\-]*([0-9,]+\.?[0-9]*)"));
-        Put(d, "EquityRatio", Find(t, @"自己資本比率[^0-9\-]*([0-9]+\.?[0-9]*)\s*[%％]"));
-        Put(d, "PayoutRatio", Find(t, @"配当性向[^0-9\-]*([0-9]+\.?[0-9]*)\s*[%％]"));
-        var mm = Regex.Match(t, @"時価総額[^0-9\-]*([0-9,]+\.?[0-9]*)\s*(兆|億)");
+        // 自己資本比率(株主資本比率)は数値テキストではなくバーの幅(style="width:NN%")で表現される。
+        // 例: ...title="... 自己資本比率" ...>株主資本比率(連)</a></dt><dd><span class="ratio" style="width:37.83%;">
+        Put(d, "EquityRatio", Find(html, @"自己資本比率[\s\S]{0,200}?width:\s*([0-9]+\.?[0-9]*)\s*%"));
+        // 時価総額: 兆+億 を合算。例: 時価総額 43兆8626億 → 43,862,600 百万円
+        var mm = Regex.Match(t, @"時価総額[^0-9\-]*([0-9,]+)\s*兆\s*([0-9,]+)?\s*億?");
         if (mm.Success)
         {
-            var v = Num(mm.Groups[1].Value);
-            if (v.HasValue)
-            {
-                double m = mm.Groups[2].Value == "兆" ? v.Value * 1_000_000 : v.Value * 100;
-                d["MarketCap"] = Math.Round(m).ToString(CultureInfo.InvariantCulture);
-            }
+            double m = (Num(mm.Groups[1].Value) ?? 0) * 1_000_000
+                     + (mm.Groups[2].Success ? (Num(mm.Groups[2].Value) ?? 0) * 100 : 0);
+            if (m > 0) d["MarketCap"] = Math.Round(m).ToString(CultureInfo.InvariantCulture);
+        }
+        else
+        {
+            var ok = Regex.Match(t, @"時価総額[^0-9\-]*([0-9,]+\.?[0-9]*)\s*億");
+            if (ok.Success && Num(ok.Groups[1].Value) is { } v)
+                d["MarketCap"] = Math.Round(v * 100).ToString(CultureInfo.InvariantCulture);
         }
         return d;
     }
 
-    public static Dictionary<string, string> ParseKabutan(string html)
+    public static Dictionary<string, string> ParseKabutan(string html, string code)
     {
         var t = Strip(html);
         var d = new Dictionary<string, string>();
+        // 現在値(リアルタイム株価)。例: 現在値 2,746.9 ( 21:20 06/22 )
         Put(d, "Price", Find(t, @"現在値[^0-9\-]*([0-9,]+(?:\.[0-9]+)?)"));
-        var m = Regex.Match(t, @"PER\s+PBR[^0-9\-]*([0-9]+\.[0-9]+)\s+([0-9]+\.[0-9]+)\s+([0-9]+\.[0-9]+)");
-        if (m.Success)
-        {
-            d["PER"] = m.Groups[1].Value;
-            d["PBR"] = m.Groups[2].Value;
-            d["DividendYield"] = m.Groups[3].Value;
-        }
         return d;
     }
 
