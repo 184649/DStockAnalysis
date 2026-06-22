@@ -9,9 +9,16 @@ publish/
 .idea/
 *.suo
 
+# Local tooling config (machine-specific paths)
+.claude/
+
 # App local data (never committed)
 *.local.json
 
 # Data acquisition generated artifacts
 tools/.cache/
 tools/output/
+
+# Web app runtime data (stocks/userdata/settings/master cache/fetch state)
+DStockAnalysis.Web/data/
+**/wwwroot/data/

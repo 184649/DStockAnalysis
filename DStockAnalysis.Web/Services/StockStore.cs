@@ -1,0 +1,272 @@
+using System.Text;
+using DStockAnalysis.Models;
+using DStockAnalysis.Services;
+
+namespace DStockAnalysis.Web.Services;
+
+/// <summary>
+/// 全銘柄をサーバ側メモリに保持し、スクリーニング・個別分析・比較・CSV取込・
+/// JPX マスタ更新・ユーザーデータ保存を仲介するアプリケーションサービス。
+/// WPF 版の MainViewModel に相当する役割を Web 用に再構成したもの。
+/// ドメインロジック(指標生成・スコア計算・CSV解析・xls解析)はすべて Core を再利用する。
+/// </summary>
+public class StockStore
+{
+    private readonly object _lock = new();
+    private readonly IndicatorSeedService _seed = new();
+    private readonly ScoreService _scorer = new();
+    private readonly CsvImportService _csv = new();
+    private readonly ReferenceLinkService _links = new();
+    private readonly DataStorageService _storage;
+    private readonly JpxMasterService _jpx;
+    private readonly ILogger<StockStore> _log;
+
+    private List<Stock> _stocks = new();
+    private Dictionary<string, Stock> _byCode = new(StringComparer.OrdinalIgnoreCase);
+    private DateTime? _masterDate;
+
+    public StockStore(IConfiguration config, ILogger<StockStore> log)
+    {
+        _log = log;
+        // データ保存先(JSON/マスタキャッシュ)。既定はコンテンツルート配下の data。
+        var dataDir = config["DataDir"];
+        if (string.IsNullOrWhiteSpace(dataDir))
+            dataDir = Path.Combine(AppContext.BaseDirectory, "data");
+        Directory.CreateDirectory(dataDir);
+        _storage = new DataStorageService(dataDir);
+        _jpx = new JpxMasterService(dataDir);
+        DataDirectory = dataDir;
+    }
+
+    public string DataDirectory { get; }
+    public DateTime? MasterDate { get { lock (_lock) return _masterDate; } }
+    public int Count { get { lock (_lock) return _stocks.Count; } }
+    public int SampleCount { get { lock (_lock) return _stocks.Count(s => s.IsSampleIndicators); } }
+
+    /// <summary>起動時の初期ロード。保存→JPX全銘柄→サンプル の優先順位。</summary>
+    public void Initialize()
+    {
+        lock (_lock)
+        {
+            List<Stock> stocks;
+            if (_storage.HasSavedStocks)
+            {
+                stocks = _storage.LoadStocks();
+                _masterDate = stocks.Count > 0 ? stocks.Max(s => s.DataUpdated) : null;
+                _log.LogInformation("保存済み銘柄を読み込みました: {Count} 件", stocks.Count);
+            }
+            else if (_jpx.IsAvailable)
+            {
+                (stocks, _masterDate) = _jpx.LoadAll(_seed, _scorer);
+                _log.LogInformation("JPX 全銘柄を読み込みました: {Count} 件 (基準日 {Date:yyyy-MM-dd})", stocks.Count, _masterDate);
+            }
+            else
+            {
+                stocks = new SampleDataService().CreateSampleStocks();
+                _log.LogWarning("JPX マスタが見つからないためサンプル {Count} 銘柄で起動します", stocks.Count);
+            }
+
+            _storage.ApplyUserData(stocks);
+            foreach (var s in stocks) _scorer.Recalculate(s);
+            ReplaceInternal(stocks);
+        }
+    }
+
+    private void ReplaceInternal(List<Stock> stocks)
+    {
+        _stocks = stocks;
+        _byCode = stocks
+            .GroupBy(s => s.Code, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>スクリーニング条件で絞り込み、バフェット→買いたい度の降順で返す。</summary>
+    public List<Stock> Screen(ScreeningCriteria criteria)
+    {
+        lock (_lock)
+        {
+            return _stocks
+                .Where(criteria.Matches)
+                .OrderByDescending(s => s.BuffettScore)
+                .ThenByDescending(s => s.WantToBuyScore)
+                .ToList();
+        }
+    }
+
+    public Stock? Get(string code)
+    {
+        lock (_lock)
+        {
+            if (code != null && _byCode.TryGetValue(code, out var s))
+            {
+                EnsureHistoryInternal(s);
+                return s;
+            }
+            return null;
+        }
+    }
+
+    public IReadOnlyList<Stock> GetMany(IEnumerable<string> codes)
+    {
+        lock (_lock)
+        {
+            var list = new List<Stock>();
+            foreach (var c in codes)
+                if (_byCode.TryGetValue(c, out var s)) list.Add(s);
+            return list;
+        }
+    }
+
+    private void EnsureHistoryInternal(Stock s)
+    {
+        if (s.History == null || s.History.Count == 0)
+            s.History = _seed.BuildHistory(s);
+    }
+
+    public List<ReferenceLink> Links(string code) => _links.BuildLinks(code);
+
+    /// <summary>個別分析でメモ・バフェットチェック・興味度を保存し、スコア再計算する。</summary>
+    public Stock? SaveUserData(string code, StockMemo? memo, BuffettCheck? check, double? interest)
+    {
+        lock (_lock)
+        {
+            if (!_byCode.TryGetValue(code, out var s)) return null;
+            if (memo != null) s.Memo = memo;
+            if (check != null) s.BuffettCheck = check;
+            if (interest.HasValue) s.UserInterest = interest.Value;
+            _scorer.Recalculate(s);
+            _storage.SaveUserData(_stocks);
+            _storage.SaveStocks(_stocks);
+            return s;
+        }
+    }
+
+    /// <summary>CSV(実データ)を列単位マージで取り込む。取得できた列だけ上書き。</summary>
+    public (int updated, int added) ImportCsv(string content)
+    {
+        lock (_lock)
+        {
+            var (imported, columns) = _csv.ParseWithColumns(content);
+            int updated = 0, added = 0;
+            foreach (var imp in imported)
+            {
+                if (_byCode.TryGetValue(imp.Code, out var existing))
+                {
+                    existing.CopyIndicatorsFrom(imp, columns);
+                    _scorer.Recalculate(existing);
+                    updated++;
+                }
+                else
+                {
+                    _seed.FillIndicators(imp);          // 未知の列は擬似値で補完
+                    imp.CopyIndicatorsFrom(imp, columns); // CSV にある列で上書き(IsSample=false 化)
+                    _scorer.Recalculate(imp);
+                    _stocks.Add(imp);
+                    _byCode[imp.Code] = imp;
+                    added++;
+                }
+            }
+            _storage.SaveStocks(_stocks);
+            return (updated, added);
+        }
+    }
+
+    /// <summary>取得済みの指標行(列単位)を全銘柄へ反映する。自動取得バッチから呼ばれる。</summary>
+    public int ApplyFetched(IEnumerable<(string code, Dictionary<string, string> values)> rows)
+    {
+        lock (_lock)
+        {
+            int updated = 0;
+            foreach (var (code, values) in rows)
+            {
+                if (values.Count == 0) continue;
+                if (!_byCode.TryGetValue(code, out var existing)) continue;
+                var columns = new HashSet<string>(values.Keys, StringComparer.OrdinalIgnoreCase);
+                // CSV と同じ解釈にするため一旦 CSV テキスト化して解析
+                var src = ParseValuesToStock(code, values);
+                existing.CopyIndicatorsFrom(src, columns);
+                _scorer.Recalculate(existing);
+                updated++;
+            }
+            if (updated > 0) _storage.SaveStocks(_stocks);
+            return updated;
+        }
+    }
+
+    private Stock ParseValuesToStock(string code, Dictionary<string, string> values)
+    {
+        var sb = new StringBuilder();
+        var keys = values.Keys.ToList();
+        sb.Append("Code,").AppendLine(string.Join(",", keys));
+        sb.Append(EscapeCsv(code)).Append(',')
+          .AppendLine(string.Join(",", keys.Select(k => EscapeCsv(values[k]))));
+        var (list, _) = _csv.ParseWithColumns(sb.ToString());
+        return list.FirstOrDefault() ?? new Stock { Code = code };
+    }
+
+    private static string EscapeCsv(string v)
+    {
+        if (v.Contains(',') || v.Contains('"') || v.Contains('\n'))
+            return "\"" + v.Replace("\"", "\"\"") + "\"";
+        return v;
+    }
+
+    /// <summary>記入用テンプレ CSV(全銘柄の基本情報を前埋め)を生成する。</summary>
+    public string ExportTemplate()
+    {
+        lock (_lock)
+        {
+            var cols = new[]
+            {
+                "Code","Name","Market","Sector","Scale","Theme","Description","FiscalMonth","IRUrl",
+                "Price","MarketCap","PER","PBR","ROE","EPS","BPS","OperatingMargin","NetProfitMargin",
+                "DividendYield","PayoutRatio","Dividend","ConsecutiveDividendYears","EquityRatio",
+                "InterestBearingDebtRatio","RevenueGrowth3Y","OperatingCF","FreeCashFlow",
+                "BenefitYield","TotalYield","HasShareholderBenefit","BenefitContent","BenefitCategory"
+            };
+            var sb = new StringBuilder();
+            sb.AppendLine(string.Join(",", cols));
+            foreach (var s in _stocks.OrderBy(s => s.Code))
+            {
+                sb.Append(EscapeCsv(s.Code)).Append(',')
+                  .Append(EscapeCsv(s.Name)).Append(',')
+                  .Append(EscapeCsv(s.Market)).Append(',')
+                  .Append(EscapeCsv(s.Sector)).Append(',')
+                  .Append(EscapeCsv(s.Scale)).Append(',');
+                sb.Append(new string(',', cols.Length - 6)); // 残り列は空欄
+                sb.AppendLine();
+            }
+            return sb.ToString();
+        }
+    }
+
+    /// <summary>JPX 全銘柄一覧を最新化して再読込する(メモ/チェックは引き継ぐ)。</summary>
+    public async Task<bool> UpdateMasterAsync()
+    {
+        bool ok = await _jpx.UpdateAsync();
+        if (!ok) return false;
+        lock (_lock)
+        {
+            _storage.SaveUserData(_stocks);       // 既存メモを退避
+            var (stocks, date) = _jpx.LoadAll(_seed, _scorer);
+            _masterDate = date;
+            _storage.ApplyUserData(stocks);
+            foreach (var s in stocks) _scorer.Recalculate(s);
+            ReplaceInternal(stocks);
+            _storage.SaveStocks(_stocks);
+        }
+        return true;
+    }
+
+    public IReadOnlyList<string> AllCodes()
+    {
+        lock (_lock) return _stocks.Select(s => s.Code).ToList();
+    }
+
+    // 候補値(コンボ用)
+    public List<string> Sectors() { lock (_lock) return _stocks.Select(s => s.Sector).Where(x => !string.IsNullOrEmpty(x)).Distinct().OrderBy(x => x).ToList(); }
+    public List<string> Markets() { lock (_lock) return _stocks.Select(s => s.Market).Where(x => !string.IsNullOrEmpty(x)).Distinct().OrderBy(x => x).ToList(); }
+    public List<string> Scales() { lock (_lock) return _stocks.Select(s => s.Scale).Where(x => !string.IsNullOrEmpty(x)).Distinct().ToList(); }
+    public List<string> BenefitCategories() { lock (_lock) return _stocks.Where(s => s.HasShareholderBenefit).Select(s => s.BenefitCategory).Where(x => !string.IsNullOrEmpty(x)).Distinct().OrderBy(x => x).ToList(); }
+    public List<string> BenefitMonths() { lock (_lock) return _stocks.Where(s => s.HasShareholderBenefit).Select(s => s.BenefitRightsMonth).Where(x => !string.IsNullOrEmpty(x)).Distinct().OrderBy(x => x).ToList(); }
+}

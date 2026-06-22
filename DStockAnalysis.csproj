@@ -12,17 +12,27 @@
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
 
-  <!-- テストプロジェクト・設計書フォルダを本体のコンパイル対象から除外 -->
+  <!-- テスト・設計書・他プロジェクト(Core/Web)を本体のコンパイル対象から除外 -->
   <ItemGroup>
     <Compile Remove="Tests\**" />
     <Page Remove="Tests\**" />
     <None Remove="Tests\**" />
+    <Compile Remove="Tests.Web\**" />
+    <Page Remove="Tests.Web\**" />
+    <None Remove="Tests.Web\**" />
     <Compile Remove="docs\**" />
     <None Remove="docs\**" />
+    <Compile Remove="DStockAnalysis.Core\**" />
+    <Page Remove="DStockAnalysis.Core\**" />
+    <None Remove="DStockAnalysis.Core\**" />
+    <Compile Remove="DStockAnalysis.Web\**" />
+    <Page Remove="DStockAnalysis.Web\**" />
+    <None Remove="DStockAnalysis.Web\**" />
   </ItemGroup>
 
+  <!-- 共有ドメイン(Models/Services/Common)は Core ライブラリへ分離し参照する -->
   <ItemGroup>
-    <PackageReference Include="NPOI" Version="2.7.1" />
+    <ProjectReference Include="DStockAnalysis.Core\DStockAnalysis.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

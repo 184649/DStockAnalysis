@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>DStockAnalysis.Web</RootNamespace>
+    <AssemblyName>DStockAnalysis.Web</AssemblyName>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DStockAnalysis.Core\DStockAnalysis.Core.csproj" />
+  </ItemGroup>
+
+  <!-- JPX 全銘柄マスタ(同梱)とサンプルCSVを出力フォルダへ配置 -->
+  <ItemGroup>
+    <None Include="..\Data\data_j.xls" Link="Data\data_j.xls">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\sample_stocks.csv" Link="sample_stocks.csv">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
