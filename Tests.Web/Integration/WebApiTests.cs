@@ -32,7 +32,8 @@ public class WebApiTests : IClassFixture<WebApiTests.ApiFactory>
                 cfg.AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["DataDir"] = _dir,
-                    ["Fetch:Enabled"] = "false"
+                    ["Fetch:Enabled"] = "false",
+                    ["Fetch:OnDemand"] = "false" // テストでは外部サイトへアクセスしない
                 }));
         }
 

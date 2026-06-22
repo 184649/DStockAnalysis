@@ -13,7 +13,14 @@ namespace DStockAnalysis.Web.Services;
 ///  - robots が自動アクセスを拒否するバフェット・コードは対象外(リンクのみ)。
 ///  - 取得できた列だけを返す(不確実な値は含めない)。反映は列単位マージで安全。
 /// </summary>
-public class IndicatorFetchService
+/// <summary>1銘柄分の指標を取得するフェッチャ。テストでは差し替え可能にするため抽象化する。</summary>
+public interface IIndicatorFetcher
+{
+    Task<Dictionary<string, string>> FetchAsync(string code, bool useKabutan, CancellationToken ct);
+    Task<double?> GetCrawlDelayAsync(string url, CancellationToken ct);
+}
+
+public class IndicatorFetchService : IIndicatorFetcher
 {
     private readonly HttpClient _http;
     private readonly ILogger<IndicatorFetchService> _log;

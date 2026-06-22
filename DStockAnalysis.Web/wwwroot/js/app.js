@@ -9,7 +9,7 @@
 const API = {
   meta: () => get("/api/meta"),
   screen: (c) => post("/api/screen", c),
-  stock: (code) => get(`/api/stocks/${encodeURIComponent(code)}`),
+  stock: (code, refresh) => get(`/api/stocks/${encodeURIComponent(code)}${refresh ? "?refresh=true" : ""}`),
   compare: (codes) => get(`/api/compare?codes=${encodeURIComponent(codes.join(","))}`),
   saveUser: (code, body) => post(`/api/stocks/${encodeURIComponent(code)}/userdata`, body),
   importCsv: (text) => fetch("/api/import", { method: "POST", headers: { "Content-Type": "text/csv" }, body: text }).then(j),
@@ -286,11 +286,14 @@ function renderAnalysisList(filter = "") {
   document.querySelectorAll("#analysisItems .item").forEach(d => d.onclick = () => openAnalysis(d.dataset.code));
 }
 
-async function openAnalysis(code) {
+async function openAnalysis(code, refresh = false) {
   switchView("analysis");
-  const data = await API.stock(code);
+  document.getElementById("analysisDetail").innerHTML =
+    `<div class="empty">${refresh ? "最新の実データを取得中" : "実データを取得中"}...(${esc(code)})<br><span style="font-size:11px">外部サイトから取得するため数秒かかることがあります</span></div>`;
+  const data = await API.stock(code, refresh);
   state.selected = data.stock;
   state.links = data.links;
+  state.lastFetched = data.lastFetched;
   renderAnalysisList(document.getElementById("analysisSearch").value);
   renderDetail();
 }
@@ -337,7 +340,10 @@ function renderDetail() {
     <div class="tags">
       <span>${esc(s.Market)}</span><span>${esc(s.Sector)}</span><span>${esc(s.Scale)}</span>
       ${s.Theme ? `<span>${esc(s.Theme)}</span>` : ""}${s.FiscalMonth ? `<span>決算 ${esc(s.FiscalMonth)}</span>` : ""}
-      ${s.IsSampleIndicators ? `<span class="sample-dot">指標はサンプル値</span>` : ""}
+      ${s.IsSampleIndicators
+        ? `<span class="sample-dot">指標はサンプル値</span>`
+        : `<span class="flag-on">実データ${state.lastFetched ? "(" + new Date(state.lastFetched).toLocaleDateString("ja-JP") + ")" : ""}</span>`}
+      <button class="btn" id="btnRefresh" style="margin-left:6px">実データ更新</button>
     </div>
     ${s.Description ? `<div class="desc">${esc(s.Description)}</div>` : ""}
     <div class="links">${links}</div>
@@ -412,6 +418,8 @@ function renderDetail() {
   `;
   el.querySelectorAll('[data-bk]').forEach(sel => sel.onchange = saveUserData);
   document.getElementById("btnSaveMemo").onclick = saveUserData;
+  const rb = document.getElementById("btnRefresh");
+  if (rb) rb.onclick = () => openAnalysis(s.Code, true);
 }
 
 async function saveUserData() {
