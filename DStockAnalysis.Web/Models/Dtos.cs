@@ -24,6 +24,7 @@ public class StockSummaryDto
     public bool CumulativeDividend { get; set; }
     public bool DoeAdopted { get; set; }
     public bool HasShareholderBenefit { get; set; }
+    public bool BenefitUnknown { get; set; }
     public string BenefitCategory { get; set; } = "";
     public string BenefitRightsMonth { get; set; } = "";
     public double BenefitYield { get; set; }
@@ -60,6 +61,7 @@ public class StockSummaryDto
         EPS = s.EPS, DividendYield = s.DividendYield, PayoutRatio = s.PayoutRatio,
         ConsecutiveDividendYears = s.ConsecutiveDividendYears, CumulativeDividend = s.CumulativeDividend,
         DoeAdopted = s.DoeAdopted, HasShareholderBenefit = s.HasShareholderBenefit,
+        BenefitUnknown = s.BenefitUnknown,
         BenefitCategory = s.BenefitCategory, BenefitRightsMonth = s.BenefitRightsMonth,
         BenefitYield = s.BenefitYield, TotalYield = s.TotalYield, HasLongTermBenefit = s.HasLongTermBenefit,
         EquityRatio = s.EquityRatio, InterestBearingDebtRatio = s.InterestBearingDebtRatio,

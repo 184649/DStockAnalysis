@@ -122,7 +122,10 @@ function cell(col, s) {
     case "comma": return `<td class="num">${fcomma(v)}</td>`;
     case "cfcomma": return `<td class="num ${qClass(col.m, v)}">${fcomma(v)}</td>`;
     case "num": return `<td class="num ${col.m ? qClass(col.m, v) : ""}">${fnum(v, col.d)}</td>`;
-    case "flag": return `<td>${flag(v)}</td>`;
+    case "flag":
+      if (col.k === "HasShareholderBenefit" && s.BenefitUnknown)
+        return `<td><span class="flag-off" title="優待情報は未取得(CSV取込で反映)">?</span></td>`;
+      return `<td>${flag(v)}</td>`;
     case "flaglong": return `<td>${flagLong(v)}</td>`;
     case "score": return `<td class="num ${qClass("score", v)}">${fnum(v, 0)}</td>`;
     case "buffett": return `<td class="num ${qClass("buffett", v)}">${fnum(v, 0)}</td>`;
@@ -395,7 +398,10 @@ function renderDetail() {
 
     <div class="box">
       <h3>株主優待・株主還元</h3>
-      <div class="cards">
+      ${s.BenefitUnknown
+        ? `<div class="desc">株主優待情報は自動取得の対象外です(未取得)。実データは <b>CSV取込</b> で反映してください。</div>
+           <div class="cards">${metricCard("配当利回り", s.DividendYield, "%")}${metricCard("総合利回り", s.TotalYield, "%")}</div>`
+        : `<div class="cards">
         ${metricCard("優待", s.HasShareholderBenefit ? "あり" : "なし")}
         ${metricCard("優待内容", s.BenefitContent || "-")}
         ${metricCard("優待利回り", s.BenefitYield, "%")}
@@ -404,6 +410,7 @@ function renderDetail() {
         ${metricCard("権利確定月", s.BenefitRightsMonth || "-")}
       </div>
       ${s.BenefitRiskMemo ? `<div class="desc">廃止リスク: ${esc(s.BenefitRiskMemo)}</div>` : ""}
+      ${s.IsSampleIndicators ? `<div class="desc"><span class="sample-dot">※ サンプル値</span></div>` : ""}`}
     </div>
 
     <div class="box">

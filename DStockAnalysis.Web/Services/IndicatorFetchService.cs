@@ -23,6 +23,7 @@ public interface IIndicatorFetcher
 public class IndicatorFetchService : IIndicatorFetcher
 {
     private readonly HttpClient _http;
+    private readonly YahooFinanceClient _yahoo;
     private readonly ILogger<IndicatorFetchService> _log;
     private readonly Dictionary<string, RobotsRules> _robots = new();
     private readonly SemaphoreSlim _robotsLock = new(1, 1);
@@ -30,9 +31,10 @@ public class IndicatorFetchService : IIndicatorFetcher
     private const string UA =
         "Mozilla/5.0 (compatible; DStockAnalysis-personal/1.0; +weekly local research)";
 
-    public IndicatorFetchService(IHttpClientFactory factory, ILogger<IndicatorFetchService> log)
+    public IndicatorFetchService(IHttpClientFactory factory, YahooFinanceClient yahoo, ILogger<IndicatorFetchService> log)
     {
         _http = factory.CreateClient("scraper");
+        _yahoo = yahoo;
         _log = log;
     }
 
@@ -41,12 +43,20 @@ public class IndicatorFetchService : IIndicatorFetcher
     {
         var row = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-        await MergeFrom(row, code, $"https://irbank.net/{code}", ParseIrBank, ct);
+        // 1) Yahoo!ファイナンス(構造化JSON)を最優先。株価(現在値)/PER/PBR/配当利回り/配当性向/EPS/ROE。
+        foreach (var kv in await _yahoo.FetchAsync(code, ct)) row[kv.Key] = kv.Value;
+
+        // 2) みんかぶ: 時価総額(百万円・正確値)。Yahoo の時価総額は日本株で過少になるため採用しない。
         await MergeFrom(row, code, $"https://minkabu.jp/stock/{code}", ParseMinkabu, ct);
+
+        // 3) IR BANK: 自己資本比率(バー幅)、時価総額(兆億)予備、Yahoo 欠落時の各指標予備。
+        await MergeFrom(row, code, $"https://irbank.net/{code}", ParseIrBank, ct);
+
+        // 4) 株探(任意): Yahoo 不通時の現在値フォールバック。
         if (useKabutan)
             await MergeFrom(row, code, $"https://kabutan.jp/stock/?code={code}", ParseKabutan, ct);
 
-        Derive(row); // 取得した実値から派生指標(MIX/BPS/配当/配当性向)を算出
+        Derive(row); // 取得した実値から派生指標(MIX/BPS/配当/未取得の配当性向)を算出
         return row;
     }
 
@@ -59,24 +69,26 @@ public class IndicatorFetchService : IIndicatorFetcher
             if (!row.ContainsKey(kv.Key)) row[kv.Key] = kv.Value;
     }
 
-    /// <summary>取得済みの実値から、サイトに直接出ない派生指標を算出して補う。</summary>
+    /// <summary>取得済みの実値から、サイトに直接出ない派生指標を「不足分のみ」補う。
+    /// 既に取得できている値(例: Yahoo の配当性向)は上書きしない。</summary>
     public static void Derive(Dictionary<string, string> row)
     {
         double? G(string k) => row.TryGetValue(k, out var v) && double.TryParse(v, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : null;
-        void P(string k, double v) => row[k] = Math.Round(v, 2).ToString(CultureInfo.InvariantCulture);
+        // 既存キーは尊重し、無い場合のみ補完する
+        void P(string k, double v, int dec = 2) { if (!row.ContainsKey(k)) row[k] = Math.Round(v, dec).ToString(CultureInfo.InvariantCulture); }
 
         var per = G("PER"); var pbr = G("PBR"); var price = G("Price");
         var dy = G("DividendYield"); var eps = G("EPS");
 
-        if (per is > 0 && pbr is > 0) P("MixFactor", per.Value * pbr.Value);
-        if (price is > 0 && pbr is > 0) row["BPS"] = Math.Round(price.Value / pbr.Value).ToString(CultureInfo.InvariantCulture);
+        if (per is > 0 && pbr is > 0) P("MixFactor", per.Value * pbr.Value, 1);
+        if (price is > 0 && pbr is > 0) P("BPS", price.Value / pbr.Value, 0);
 
         // 1株配当 = 株価 × 配当利回り(%) / 100
         if (price is > 0 && dy is > 0)
         {
             double dividend = price.Value * dy.Value / 100.0;
             P("Dividend", dividend);
-            // 配当性向(%) = 1株配当 / EPS × 100(サイトに直接出ないため実値から算出)
+            // 配当性向(%) = 1株配当 / EPS × 100(取得できていない場合のみ算出)
             if (eps is > 0) P("PayoutRatio", dividend / eps.Value * 100.0);
         }
     }
@@ -150,19 +162,13 @@ public class IndicatorFetchService : IIndicatorFetcher
     {
         var t = Strip(html);
         var d = new Dictionary<string, string>();
-
-        // 株価: JSON-LD の offers.price(当該銘柄URLに紐づくもの)が最も確実。
-        // 例: ...stock/7203","offers":{"@type":"Offer","price":"2741.5",...
-        var pm = Regex.Match(html, $@"stock/{Regex.Escape(code)}""[^}}]*?""price""\s*:\s*""([0-9,]+\.?[0-9]*)""");
-        if (!pm.Success) // 予備: 最初の offers.price
-            pm = Regex.Match(html, @"""offers""\s*:\s*\{[^}]*?""price""\s*:\s*""([0-9,]+\.?[0-9]*)""");
-        if (pm.Success) Put(d, "Price", Num(pm.Groups[1].Value)?.ToString(CultureInfo.InvariantCulture));
-
+        // 注: みんかぶの JSON-LD offers.price は「前日終値」で現在値ではないため株価には使わない(Yahoo を使用)。
+        // 時価総額(百万円・正確値)。例: 時価総額 43,301,958百万円
+        Put(d, "MarketCap", Find(t, @"時価総額[^0-9\-]*([0-9,]+)\s*百万円"));
+        // Yahoo 欠落時の予備として PER/PBR/配当利回り も拾う(setdefault なので Yahoo 値があれば使われない)。
         Put(d, "PER", Find(t, @"PER[^0-9\-]*([0-9,]+\.?[0-9]*)\s*倍"));
         Put(d, "PBR", Find(t, @"PBR[^0-9\-]*([0-9,]+\.?[0-9]*)\s*倍"));
         Put(d, "DividendYield", Find(t, @"配当利回り[^0-9\-]*([0-9]+\.?[0-9]*)\s*[%％]"));
-        // 時価総額(百万円・正確値)。例: 時価総額 43,301,958百万円
-        Put(d, "MarketCap", Find(t, @"時価総額[^0-9\-]*([0-9,]+)\s*百万円"));
         return d;
     }
 

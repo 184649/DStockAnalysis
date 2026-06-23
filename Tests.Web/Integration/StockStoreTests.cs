@@ -129,6 +129,40 @@ public class StockStoreTests : IDisposable
     }
 
     [Fact]
+    public void ApplyFetched_ClearsPseudoBenefitAndMarksUnknown()
+    {
+        var store = NewStore();
+        // 擬似優待ありの銘柄を1つ選ぶ
+        var benefitStock = store.Screen(new ScreeningCriteria { BenefitOnly = true }).First();
+        Assert.True(benefitStock.HasShareholderBenefit);
+
+        // 実データ取得(優待列は含まない)を反映
+        store.ApplyFetched(new[] { (benefitStock.Code, new Dictionary<string, string> { ["PER"] = "10.0", ["DividendYield"] = "3.0" }) });
+
+        var s = store.Get(benefitStock.Code)!;
+        Assert.False(s.IsSampleIndicators);
+        Assert.True(s.BenefitUnknown);            // 優待は未取得扱い
+        Assert.False(s.HasShareholderBenefit);    // 擬似優待は消える
+        Assert.Equal(0, s.BenefitYield);
+        Assert.Equal(s.DividendYield, s.TotalYield, 3); // 総合利回り=配当のみ
+    }
+
+    [Fact]
+    public void ImportCsv_WithBenefitColumns_MarksBenefitKnown()
+    {
+        var store = NewStore();
+        var code = store.AllCodes().First();
+        store.ApplyFetched(new[] { (code, new Dictionary<string, string> { ["PER"] = "10.0" }) });
+        Assert.True(store.Get(code)!.BenefitUnknown);
+
+        // CSV で優待列を取り込むと実データ優待として扱う
+        store.ImportCsv($"Code,HasShareholderBenefit,BenefitContent,BenefitYield\n{code},1,QUOカード1000円,1.5\n");
+        var s = store.Get(code)!;
+        Assert.False(s.BenefitUnknown);
+        Assert.True(s.HasShareholderBenefit);
+    }
+
+    [Fact]
     public void ExportTemplate_ContainsHeaderAndAllCodes()
     {
         var store = NewStore();

@@ -61,16 +61,16 @@ public class IndicatorFetchServiceTests
     }
 
     [Fact]
-    public void ParseMinkabu_PriceFromJsonLdAndRatios()
+    public void ParseMinkabu_MarketCapAndRatioFallback()
     {
-        var html = "{\"url\":\"https://minkabu.jp/stock/7203\",\"offers\":{\"@type\":\"Offer\",\"price\":\"2741.5\"}} " +
-                   "<div>PER (調整後) 10.5 倍 PBR 1.1 倍 配当利回り 2.6 % 時価総額 43,301,958百万円</div>";
+        var html = "<div>PER (調整後) 10.5 倍 PBR 1.1 倍 配当利回り 2.6 % 時価総額 43,301,958百万円</div>";
         var d = IndicatorFetchService.ParseMinkabu(html, "7203");
-        Assert.Equal("2741.5", d["Price"]);            // JSON-LD の当該銘柄 offers.price
-        Assert.Equal("10.5", d["PER"]);
+        Assert.Equal("43301958", d["MarketCap"]);       // 百万円の正確値
+        Assert.Equal("10.5", d["PER"]);                 // Yahoo 欠落時の予備
         Assert.Equal("1.1", d["PBR"]);
         Assert.Equal("2.6", d["DividendYield"]);
-        Assert.Equal("43301958", d["MarketCap"]);       // 百万円の正確値
+        // 株価はみんかぶの前日終値を避けるため取得しない(Yahoo を使用)
+        Assert.False(d.ContainsKey("Price"));
     }
 
     [Fact]

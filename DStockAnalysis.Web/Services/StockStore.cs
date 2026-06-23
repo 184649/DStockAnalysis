@@ -171,8 +171,12 @@ public class StockStore
         }
     }
 
-    /// <summary>取得済みの指標行(列単位)を全銘柄へ反映する。自動取得バッチから呼ばれる。</summary>
-    public int ApplyFetched(IEnumerable<(string code, Dictionary<string, string> values)> rows)
+    /// <summary>銘柄データを永続化する(取得バッチからの間引き保存用)。</summary>
+    public void Persist() { lock (_lock) _storage.SaveStocks(_stocks); }
+
+    /// <summary>取得済みの指標行(列単位)を全銘柄へ反映する。自動取得バッチから呼ばれる。
+    /// save=false の場合は保存しない(呼び出し側でまとめて Persist する)。</summary>
+    public int ApplyFetched(IEnumerable<(string code, Dictionary<string, string> values)> rows, bool save = true)
     {
         lock (_lock)
         {
@@ -185,12 +189,33 @@ public class StockStore
                 // CSV と同じ解釈にするため一旦 CSV テキスト化して解析
                 var src = ParseValuesToStock(code, values);
                 existing.CopyIndicatorsFrom(src, columns);
+                ClearUnverifiedBenefit(existing); // 優待は自動取得できないため未取得扱い(擬似優待を消す)
                 _scorer.Recalculate(existing);
                 updated++;
             }
-            if (updated > 0) _storage.SaveStocks(_stocks);
+            if (updated > 0 && save) _storage.SaveStocks(_stocks);
             return updated;
         }
+    }
+
+    /// <summary>自動取得では株主優待を取得できないため、擬似優待を消して「未取得」にする。
+    /// 実データ優待は CSV 取込で反映する。</summary>
+    private static void ClearUnverifiedBenefit(Stock s)
+    {
+        s.HasShareholderBenefit = false;
+        s.ShareholderBenefit = "";
+        s.BenefitContent = "";
+        s.BenefitCategory = "";
+        s.BenefitRightsMonth = "";
+        s.RequiredSharesForBenefit = 0;
+        s.BenefitValue = 0;
+        s.BenefitYield = 0;
+        s.HasLongTermBenefit = false;
+        s.LongTermBenefitCondition = "";
+        s.LongTermBenefitContent = "";
+        s.BenefitRiskMemo = "";
+        s.TotalYield = s.DividendYield; // 優待分を除く
+        s.BenefitUnknown = true;
     }
 
     private Stock ParseValuesToStock(string code, Dictionary<string, string> values)
