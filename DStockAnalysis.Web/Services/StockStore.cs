@@ -41,7 +41,8 @@ public class StockStore
     public string DataDirectory { get; }
     public DateTime? MasterDate { get { lock (_lock) return _masterDate; } }
     public int Count { get { lock (_lock) return _stocks.Count; } }
-    public int SampleCount { get { lock (_lock) return _stocks.Count(s => s.IsSampleIndicators); } }
+    public int FetchedCount { get { lock (_lock) return _stocks.Count(s => s.IndicatorsFetched); } }
+    public int UnfetchedCount { get { lock (_lock) return _stocks.Count(s => !s.IndicatorsFetched); } }
 
     /// <summary>起動時の初期ロード。保存→JPX全銘柄→サンプル の優先順位。</summary>
     public void Initialize()
@@ -52,22 +53,27 @@ public class StockStore
             if (_storage.HasSavedStocks)
             {
                 stocks = _storage.LoadStocks();
+                // 実データ未取得の銘柄は擬似値を持たないよう一掃(旧バージョンのサンプル値の混入を防ぐ)
+                foreach (var s in stocks) if (!s.IndicatorsFetched) s.ClearIndicators();
                 _masterDate = stocks.Count > 0 ? stocks.Max(s => s.DataUpdated) : null;
-                _log.LogInformation("保存済み銘柄を読み込みました: {Count} 件", stocks.Count);
+                _log.LogInformation("保存済み銘柄を読み込みました: {Count} 件 (実データ取得済み {Fetched})",
+                    stocks.Count, stocks.Count(s => s.IndicatorsFetched));
             }
             else if (_jpx.IsAvailable)
             {
-                (stocks, _masterDate) = _jpx.LoadAll(_seed, _scorer);
-                _log.LogInformation("JPX 全銘柄を読み込みました: {Count} 件 (基準日 {Date:yyyy-MM-dd})", stocks.Count, _masterDate);
+                // 擬似指標は生成しない(実データ取得まで未取得のまま)
+                (stocks, _masterDate) = _jpx.LoadAll(_seed, _scorer, fillIndicators: false);
+                _log.LogInformation("JPX 全銘柄を読み込みました: {Count} 件 (指標は未取得・基準日 {Date:yyyy-MM-dd})", stocks.Count, _masterDate);
             }
             else
             {
-                stocks = new SampleDataService().CreateSampleStocks();
-                _log.LogWarning("JPX マスタが見つからないためサンプル {Count} 銘柄で起動します", stocks.Count);
+                stocks = new List<Stock>();
+                _log.LogWarning("JPX マスタ(Data/data_j.xls)が見つかりません。銘柄が空です。");
             }
 
             _storage.ApplyUserData(stocks);
-            foreach (var s in stocks) _scorer.Recalculate(s);
+            // スコアは実データ取得済みの銘柄のみ算出(未取得は0のまま=「未取得」表示)
+            foreach (var s in stocks) if (s.IndicatorsFetched) _scorer.Recalculate(s);
             ReplaceInternal(stocks);
         }
     }
@@ -98,10 +104,7 @@ public class StockStore
         lock (_lock)
         {
             if (code != null && _byCode.TryGetValue(code, out var s))
-            {
-                EnsureHistoryInternal(s);
                 return s;
-            }
             return null;
         }
     }
@@ -115,12 +118,6 @@ public class StockStore
                 if (_byCode.TryGetValue(c, out var s)) list.Add(s);
             return list;
         }
-    }
-
-    private void EnsureHistoryInternal(Stock s)
-    {
-        if (s.History == null || s.History.Count == 0)
-            s.History = _seed.BuildHistory(s);
     }
 
     public List<ReferenceLink> Links(string code) => _links.BuildLinks(code);
@@ -158,8 +155,8 @@ public class StockStore
                 }
                 else
                 {
-                    _seed.FillIndicators(imp);          // 未知の列は擬似値で補完
-                    imp.CopyIndicatorsFrom(imp, columns); // CSV にある列で上書き(IsSample=false 化)
+                    // 新規コード: CSV にある列のみ実データ、その他は未取得(擬似値で埋めない)
+                    imp.CopyIndicatorsFrom(imp, columns); // IndicatorsFetched=true・優待フラグを設定
                     _scorer.Recalculate(imp);
                     _stocks.Add(imp);
                     _byCode[imp.Code] = imp;

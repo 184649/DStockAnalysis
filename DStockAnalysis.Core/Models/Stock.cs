@@ -136,8 +136,13 @@ public class Stock : ObservableObject
     private OverallJudgement _judgement;
     public OverallJudgement Judgement { get => _judgement; set => SetProperty(ref _judgement, value); }
 
-    /// <summary>指標値が擬似(サンプル)生成かどうか。CSV/API で実データに置換すると false。</summary>
+    /// <summary>指標値が擬似(サンプル)生成かどうか。CSV/API で実データに置換すると false。
+    /// (Web 版では擬似生成を行わないため常に false。WPF 版のローカル単独動作用)</summary>
     public bool IsSampleIndicators { get; set; }
+
+    /// <summary>実データ(株価・財務指標)を取得済みかどうか。Web 版では未取得時 false。
+    /// CSV 取込・自動取得で実データを入れると true。未取得の銘柄は画面で「未取得」と表示する。</summary>
+    public bool IndicatorsFetched { get; set; }
 
     /// <summary>株主優待情報が未取得(自動取得では取得できないため不明)かどうか。
     /// 実データ取得時に擬似優待を消して true にする。CSV で優待列を取り込むと false。</summary>
@@ -234,8 +239,41 @@ public class Stock : ObservableObject
         if (H("PriceChangeAverage3M")) PriceChangeAverage3M = src.PriceChangeAverage3M;
 
         IsSampleIndicators = false; // 実データで上書き
+        IndicatorsFetched = true;   // 実データ取得済み
         if (benefitProvided) BenefitUnknown = false; // CSV で優待列が来たら実データ優待
         History.Clear();           // 時系列は選択時に再生成
+    }
+
+    /// <summary>指標(数値)・株主優待・時系列・スコアをすべて未取得状態(0/空)に戻す。
+    /// 擬似値を持たない「未取得」状態を作るために使う。基本情報(コード・銘柄名・市場等)は保持。</summary>
+    public void ClearIndicators()
+    {
+        Price = MarketCap = PER = PBR = ROE = MixFactor = EPS = BPS = 0;
+        OperatingMargin = OrdinaryProfitMargin = NetProfitMargin = 0;
+        DividendYield = PayoutRatio = Dividend = DividendRemainingYears = BuybackAmount = 0;
+        DividendTrend = ShareholderReturnPolicy = "";
+        CumulativeDividend = DoeAdopted = false;
+        ConsecutiveDividendYears = DividendCutCount = NonDividendCutYears = 0;
+        DividendGrowth1Y = DividendGrowth3Y = DividendGrowth5Y = DividendGrowth10Y = 0;
+        EquityRatio = InterestBearingDebtRatio = 0;
+        RevenueGrowth1Y = RevenueGrowth3Y = RevenueGrowth5Y = RevenueGrowth10Y = 0;
+        RevenueGrowthRate = AverageRevenueGrowth3Y = 0;
+        OperatingProfitGrowthRate = OrdinaryProfitGrowthRate = NetProfitGrowthRate = EpsGrowthRate = 0;
+        OperatingCF = InvestingCF = FinancingCF = FreeCashFlow = OperatingCashFlowMargin = 0;
+        StockPriceChange3M = AverageStockPriceChange3M = AveragePrice3M = PriceChange3M = PriceChangeAverage3M = 0;
+        SafetyScore = GrowthScore = ProfitabilityScore = ReturnScore = EfficiencyScore = ValuationScore = 0;
+        LongTermScore = RevaluationScore = BuffettScore = WantToBuyScore = OverallScore = 0;
+        Judgement = OverallJudgement.調査中;
+        // 株主優待(擬似)も消す
+        HasShareholderBenefit = HasLongTermBenefit = false;
+        ShareholderBenefit = BenefitContent = BenefitCategory = BenefitRightsMonth = "";
+        LongTermBenefitCondition = LongTermBenefitContent = BenefitRiskMemo = "";
+        RequiredSharesForBenefit = 0;
+        BenefitValue = BenefitYield = TotalYield = 0;
+        IsSampleIndicators = false;
+        IndicatorsFetched = false;
+        BenefitUnknown = true;
+        History.Clear();
     }
 
     /// <summary>総合判定の表示文字列。</summary>

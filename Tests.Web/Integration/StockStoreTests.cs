@@ -42,16 +42,25 @@ public class StockStoreTests : IDisposable
         var store = NewStore();
         Assert.True(store.Count > 3000, $"全上場銘柄が読み込まれるはず (実際 {store.Count})");
         Assert.NotNull(store.MasterDate);
-        // JPX 一覧には財務指標が無いため擬似指標で埋まる
-        Assert.Equal(store.Count, store.SampleCount);
+        // 擬似指標は生成しない。起動直後は全銘柄が未取得(指標0・スコア0)。
+        Assert.Equal(0, store.FetchedCount);
+        Assert.Equal(store.Count, store.UnfetchedCount);
+        var sample = store.Get(store.AllCodes().First())!;
+        Assert.False(sample.IndicatorsFetched);
+        Assert.Equal(0, sample.PER);
+        Assert.Equal(0, sample.BuffettScore);
     }
 
     [Fact]
     public void Screen_AppliesCriteriaAndSortsByBuffettDesc()
     {
         var store = NewStore();
-        var criteria = new ScreeningCriteria { DividendYield = new RangeFilter { Min = 4 } };
-        var result = store.Screen(criteria);
+        // 実データを数銘柄へ反映(未取得のままでは指標で絞れないため)
+        var codes = store.AllCodes().Take(5).ToList();
+        foreach (var c in codes)
+            store.ApplyFetched(new[] { (c, new Dictionary<string, string> { ["DividendYield"] = "5.0", ["PER"] = "10", ["ROE"] = "12" }) });
+
+        var result = store.Screen(new ScreeningCriteria { DividendYield = new RangeFilter { Min = 4 } });
         Assert.NotEmpty(result);
         Assert.All(result, s => Assert.True(s.DividendYield >= 4));
         // バフェットスコア降順
@@ -96,8 +105,8 @@ public class StockStoreTests : IDisposable
         Assert.Equal(0, added);
         var after = store.Get(code)!;
         Assert.Equal(9.99, after.PER, 3);
-        Assert.Equal(origRoe, after.ROE, 3);          // 未指定列は維持
-        Assert.False(after.IsSampleIndicators);        // 実データ化
+        Assert.Equal(origRoe, after.ROE, 3);          // 未指定列は維持(未取得なら0のまま)
+        Assert.True(after.IndicatorsFetched);          // 実データ化
     }
 
     [Fact]
@@ -120,29 +129,28 @@ public class StockStoreTests : IDisposable
         var code = store.AllCodes().First();
         var values = new Dictionary<string, string> { ["PER"] = "8.5", ["ROE"] = "18.0" };
 
+        Assert.False(store.Get(code)!.IndicatorsFetched); // 取得前は未取得
         int n = store.ApplyFetched(new[] { (code, values) });
         Assert.Equal(1, n);
         var s = store.Get(code)!;
         Assert.Equal(8.5, s.PER, 3);
         Assert.Equal(18.0, s.ROE, 3);
-        Assert.False(s.IsSampleIndicators);
+        Assert.True(s.IndicatorsFetched);
     }
 
     [Fact]
-    public void ApplyFetched_ClearsPseudoBenefitAndMarksUnknown()
+    public void ApplyFetched_MarksBenefitUnknownAndTotalYieldDividendOnly()
     {
         var store = NewStore();
-        // 擬似優待ありの銘柄を1つ選ぶ
-        var benefitStock = store.Screen(new ScreeningCriteria { BenefitOnly = true }).First();
-        Assert.True(benefitStock.HasShareholderBenefit);
+        var code = store.AllCodes().First();
 
-        // 実データ取得(優待列は含まない)を反映
-        store.ApplyFetched(new[] { (benefitStock.Code, new Dictionary<string, string> { ["PER"] = "10.0", ["DividendYield"] = "3.0" }) });
+        // 自動取得(優待列は含まない)を反映。優待は取得対象外。
+        store.ApplyFetched(new[] { (code, new Dictionary<string, string> { ["PER"] = "10.0", ["DividendYield"] = "3.0" }) });
 
-        var s = store.Get(benefitStock.Code)!;
-        Assert.False(s.IsSampleIndicators);
+        var s = store.Get(code)!;
+        Assert.True(s.IndicatorsFetched);
         Assert.True(s.BenefitUnknown);            // 優待は未取得扱い
-        Assert.False(s.HasShareholderBenefit);    // 擬似優待は消える
+        Assert.False(s.HasShareholderBenefit);
         Assert.Equal(0, s.BenefitYield);
         Assert.Equal(s.DividendYield, s.TotalYield, 3); // 総合利回り=配当のみ
     }

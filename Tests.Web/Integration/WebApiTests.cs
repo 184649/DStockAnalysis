@@ -61,6 +61,12 @@ public class WebApiTests : IClassFixture<WebApiTests.ApiFactory>
     [Fact]
     public async Task Screen_ReturnsMatchingStocks()
     {
+        // 先頭銘柄に実データを取り込んでから指標で絞り込む(擬似値は無いため)
+        var screen0 = await JsonOf(await _client.PostAsJsonAsync("/api/screen", new { }));
+        var code = screen0.GetProperty("stocks")[0].GetProperty("Code").GetString();
+        await _client.PostAsync("/api/import",
+            new StringContent($"Code,PER,EquityRatio\n{code},11.0,60.0\n", Encoding.UTF8, "text/csv"));
+
         var body = new { PER = new { Max = 12.0 }, EquityRatio = new { Min = 50.0 } };
         var res = await _client.PostAsJsonAsync("/api/screen", body);
         res.EnsureSuccessStatusCode();
@@ -71,7 +77,7 @@ public class WebApiTests : IClassFixture<WebApiTests.ApiFactory>
     }
 
     [Fact]
-    public async Task StockDetail_ReturnsStockHistoryAndLinks()
+    public async Task StockDetail_ReturnsStockAndLinks()
     {
         // 空条件で全件取得し先頭コードを得る
         var screen = await JsonOf(await _client.PostAsJsonAsync("/api/screen", new { }));
@@ -81,7 +87,8 @@ public class WebApiTests : IClassFixture<WebApiTests.ApiFactory>
         res.EnsureSuccessStatusCode();
         var j = await JsonOf(res);
         Assert.Equal(code, j.GetProperty("stock").GetProperty("Code").GetString());
-        Assert.True(j.GetProperty("stock").GetProperty("History").GetArrayLength() > 0);
+        // 擬似時系列は生成しない(実績データが無ければ空)。配列であることのみ確認。
+        Assert.Equal(JsonValueKind.Array, j.GetProperty("stock").GetProperty("History").ValueKind);
         Assert.Equal(6, j.GetProperty("links").GetArrayLength());
     }
 

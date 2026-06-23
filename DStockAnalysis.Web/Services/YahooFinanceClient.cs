@@ -111,17 +111,46 @@ public class YahooFinanceClient
         if (price is null or <= 0) return d; // 株価が取れない＝信頼できないので何も返さない
         Put("Price", price);
 
+        // ----- バリュエーション -----
         Put("PER", Raw("summaryDetail", "trailingPE"));
         Put("PBR", Raw("defaultKeyStatistics", "priceToBook"));
         Put("EPS", Raw("defaultKeyStatistics", "trailingEps"));
+        Put("BPS", Raw("defaultKeyStatistics", "bookValue"), 0);
 
-        // 利回り・性向・ROE は小数(0.0365)で返るため % に換算
+        // ----- 配当・還元(小数→%換算) -----
         var dy = Raw("summaryDetail", "dividendYield");
         d["DividendYield"] = Math.Round((dy ?? 0) * 100, 2).ToString(CultureInfo.InvariantCulture); // 無配は 0
         var payout = Raw("summaryDetail", "payoutRatio");
         if (payout.HasValue) Put("PayoutRatio", payout.Value * 100);
         else if ((dy ?? 0) == 0) d["PayoutRatio"] = "0";
+        Put("Dividend", Raw("summaryDetail", "trailingAnnualDividendRate")); // 1株配当(円)
+
+        // ----- 収益性・成長性(小数→%換算) -----
         Put("ROE", Raw("financialData", "returnOnEquity") is { } roe ? roe * 100 : null);
+        Put("NetProfitMargin", Raw("financialData", "profitMargins") is { } pm ? pm * 100 : null);
+        if (Raw("financialData", "revenueGrowth") is { } rg)
+        {
+            Put("RevenueGrowthRate", rg * 100);
+            Put("RevenueGrowth1Y", rg * 100);
+        }
+        if (Raw("financialData", "earningsGrowth") is { } eg)
+        {
+            Put("NetProfitGrowthRate", eg * 100);
+            Put("EpsGrowthRate", eg * 100);
+        }
+
+        // ----- 財務 -----
+        Put("InterestBearingDebtRatio", Raw("financialData", "debtToEquity")); // 有利子負債/自己資本(%)
+
+        // ----- キャッシュフロー(円→百万円) -----
+        var ocf = Raw("financialData", "operatingCashflow");
+        var fcf = Raw("financialData", "freeCashflow");
+        var rev = Raw("financialData", "totalRevenue");
+        if (ocf.HasValue) Put("OperatingCF", ocf.Value / 1_000_000.0, 0);
+        if (fcf.HasValue) Put("FreeCashFlow", fcf.Value / 1_000_000.0, 0);
+        if (ocf is > 0 && rev is > 0) Put("OperatingCashFlowMargin", ocf.Value / rev.Value * 100);
+        // 注: 営業利益率(operatingMargins)は日本株で TTM 値が実態と乖離するため採用しない(未取得のまま)。
+        // 時価総額は Yahoo が過少のため採用しない(みんかぶから取得)。
 
         return d;
     }

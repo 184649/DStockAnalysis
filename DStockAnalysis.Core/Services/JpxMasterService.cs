@@ -39,8 +39,9 @@ public class JpxMasterService
     private string? ActiveFile =>
         File.Exists(_cacheFile) ? _cacheFile : (File.Exists(_bundledFile) ? _bundledFile : null);
 
-    /// <summary>全銘柄を読み込み、擬似指標を付与して返す。</summary>
-    public (List<Stock> stocks, DateTime? masterDate) LoadAll(IndicatorSeedService seed, ScoreService scorer)
+    /// <summary>全銘柄を読み込む。fillIndicators=true なら擬似指標を付与(WPF ローカル版用)、
+    /// false なら指標は未取得のまま(Web 版: 実データ取得まで空)。</summary>
+    public (List<Stock> stocks, DateTime? masterDate) LoadAll(IndicatorSeedService seed, ScoreService scorer, bool fillIndicators = true)
     {
         var path = ActiveFile;
         if (path == null) return (new List<Stock>(), null);
@@ -49,8 +50,16 @@ public class JpxMasterService
         foreach (var s in stocks)
         {
             if (date.HasValue) s.DataUpdated = date.Value;
-            seed.FillIndicators(s);
-            scorer.Recalculate(s);
+            if (fillIndicators)
+            {
+                seed.FillIndicators(s);
+                scorer.Recalculate(s);
+            }
+            else
+            {
+                s.IndicatorsFetched = false; // 実データ未取得
+                s.BenefitUnknown = true;     // 優待も未取得
+            }
         }
         return (stocks, date);
     }

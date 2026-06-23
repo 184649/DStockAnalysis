@@ -48,7 +48,8 @@ app.MapGet("/api/meta", (StockStore store, PresetService presets) =>
     {
         MasterDate = date,
         Total = store.Count,
-        SampleCount = store.SampleCount,
+        FetchedCount = store.FetchedCount,
+        UnfetchedCount = store.UnfetchedCount,
         MasterStale = stale,
         Sectors = store.Sectors(),
         Markets = store.Markets(),
@@ -79,7 +80,7 @@ app.MapGet("/api/stocks/{code}", async (string code, bool? refresh,
     var s = store.Get(code);
     if (s == null) return Results.NotFound();
 
-    if (opt.OnDemand && (refresh == true || s.IsSampleIndicators))
+    if (opt.OnDemand && (refresh == true || !s.IndicatorsFetched))
     {
         try
         {
