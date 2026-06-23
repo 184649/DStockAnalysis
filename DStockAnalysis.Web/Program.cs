@@ -23,6 +23,7 @@ builder.Services.AddSingleton(fetchOptions);
 
 // アプリケーションサービス(シングルトン)
 builder.Services.AddSingleton<StockStore>();
+builder.Services.AddSingleton<YahooFinanceClient>();
 builder.Services.AddSingleton<IndicatorFetchService>();
 builder.Services.AddSingleton<IIndicatorFetcher>(sp => sp.GetRequiredService<IndicatorFetchService>());
 builder.Services.AddSingleton<FetchCoordinator>();

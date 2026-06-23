@@ -139,6 +139,10 @@ public class Stock : ObservableObject
     /// <summary>指標値が擬似(サンプル)生成かどうか。CSV/API で実データに置換すると false。</summary>
     public bool IsSampleIndicators { get; set; }
 
+    /// <summary>株主優待情報が未取得(自動取得では取得できないため不明)かどうか。
+    /// 実データ取得時に擬似優待を消して true にする。CSV で優待列を取り込むと false。</summary>
+    public bool BenefitUnknown { get; set; }
+
     private double _userInterest = 50; // 自分の興味(0-100)。買いたい度に影響。
     public double UserInterest { get => _userInterest; set { if (SetProperty(ref _userInterest, value)) OnPropertyChanged(nameof(JudgementText)); } }
 
@@ -192,6 +196,7 @@ public class Stock : ObservableObject
         if (H("DividendGrowth3Y")) DividendGrowth3Y = src.DividendGrowth3Y;
         if (H("DividendGrowth5Y")) DividendGrowth5Y = src.DividendGrowth5Y;
         if (H("DividendGrowth10Y")) DividendGrowth10Y = src.DividendGrowth10Y;
+        bool benefitProvided = H("HasShareholderBenefit", "ShareholderBenefit", "BenefitContent", "BenefitCategory", "BenefitYield", "BenefitValue");
         if (H("HasShareholderBenefit", "ShareholderBenefit", "BenefitContent")) HasShareholderBenefit = src.HasShareholderBenefit;
         if (H("ShareholderBenefit")) ShareholderBenefit = src.ShareholderBenefit;
         if (H("BenefitContent")) BenefitContent = src.BenefitContent;
@@ -229,6 +234,7 @@ public class Stock : ObservableObject
         if (H("PriceChangeAverage3M")) PriceChangeAverage3M = src.PriceChangeAverage3M;
 
         IsSampleIndicators = false; // 実データで上書き
+        if (benefitProvided) BenefitUnknown = false; // CSV で優待列が来たら実データ優待
         History.Clear();           // 時系列は選択時に再生成
     }
 

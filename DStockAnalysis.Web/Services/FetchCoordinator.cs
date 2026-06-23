@@ -47,7 +47,7 @@ public class FetchCoordinator
     /// force=false かつ取得済み(新しい)ならスキップ。並行リクエストは銘柄単位で直列化する。
     /// 戻り値: 実際に値を更新したか。
     /// </summary>
-    public async Task<bool> FetchOneAsync(string code, bool force, CancellationToken ct)
+    public async Task<bool> FetchOneAsync(string code, bool force, CancellationToken ct, bool save = true)
     {
         if (!force && IsFresh(code)) return false;
 
@@ -61,7 +61,7 @@ public class FetchCoordinator
             bool updated = false;
             if (values.Count > 0)
             {
-                updated = _store.ApplyFetched(new[] { (code, values) }) > 0;
+                updated = _store.ApplyFetched(new[] { (code, values) }, save) > 0;
                 lock (_cacheLock) { _cache[code] = DateTime.UtcNow; SaveCacheNoLock(); }
             }
             return updated;

@@ -117,6 +117,7 @@ public class IndicatorFetchHostedService : BackgroundService
 
         try
         {
+            int sinceSave = 0;
             foreach (var code in codes)
             {
                 ct.ThrowIfCancellationRequested();
@@ -128,14 +129,17 @@ public class IndicatorFetchHostedService : BackgroundService
                     continue;
                 }
 
-                bool updated = await _coordinator.FetchOneAsync(code, force, ct);
+                // 取得ごとに全銘柄を保存すると重いので、まとめて間引き保存する(save:false)
+                bool updated = await _coordinator.FetchOneAsync(code, force, ct, save: false);
                 lock (_statusLock) { if (updated) _status.Updated++; _status.Processed++; }
+                if (updated && ++sinceSave >= 25) { _store.Persist(); sinceSave = 0; }
 
                 // robots の Crawl-delay と基準間隔の大きい方を採用
                 var cd = await _fetcher.GetCrawlDelayAsync($"https://irbank.net/{code}", ct) ?? 0;
                 var wait = Math.Max(_opt.DelaySeconds, cd);
                 await DelaySafe(TimeSpan.FromSeconds(wait), ct);
             }
+            _store.Persist(); // 巡回終了時にまとめて保存
             _log.LogInformation("自動取得が1巡完了: 更新 {Updated} / スキップ {Skipped}",
                 Snapshot().Updated, Snapshot().Skipped);
         }
