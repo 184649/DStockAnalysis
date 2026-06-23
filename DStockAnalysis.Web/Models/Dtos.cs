@@ -52,7 +52,7 @@ public class StockSummaryDto
     public double OverallScore { get; set; }
     public string OverallGrade { get; set; } = "";
     public string JudgementText { get; set; } = "";
-    public bool IsSampleIndicators { get; set; }
+    public bool IndicatorsFetched { get; set; }
 
     public static StockSummaryDto From(Stock s) => new()
     {
@@ -73,7 +73,7 @@ public class StockSummaryDto
         ReturnScore = s.ReturnScore, EfficiencyScore = s.EfficiencyScore, ValuationScore = s.ValuationScore,
         LongTermScore = s.LongTermScore, RevaluationScore = s.RevaluationScore, BuffettScore = s.BuffettScore,
         WantToBuyScore = s.WantToBuyScore, OverallScore = s.OverallScore, OverallGrade = s.OverallGrade,
-        JudgementText = s.JudgementText, IsSampleIndicators = s.IsSampleIndicators
+        JudgementText = s.JudgementText, IndicatorsFetched = s.IndicatorsFetched
     };
 }
 
@@ -90,7 +90,8 @@ public class MetaDto
 {
     public DateTime? MasterDate { get; set; }
     public int Total { get; set; }
-    public int SampleCount { get; set; }
+    public int FetchedCount { get; set; }
+    public int UnfetchedCount { get; set; }
     public bool MasterStale { get; set; }
     public List<string> Sectors { get; set; } = new();
     public List<string> Markets { get; set; } = new();

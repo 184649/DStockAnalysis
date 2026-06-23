@@ -53,7 +53,7 @@ public class FetchCoordinatorTests : IDisposable
     {
         var (store, coord, _) = Build(new() { ["PER"] = "8.5", ["ROE"] = "18.0" });
         var code = store.AllCodes().First();
-        Assert.True(store.Get(code)!.IsSampleIndicators);
+        Assert.False(store.Get(code)!.IndicatorsFetched);
 
         bool updated = await coord.FetchOneAsync(code, force: false, CancellationToken.None);
 
@@ -61,7 +61,7 @@ public class FetchCoordinatorTests : IDisposable
         var s = store.Get(code)!;
         Assert.Equal(8.5, s.PER, 3);
         Assert.Equal(18.0, s.ROE, 3);
-        Assert.False(s.IsSampleIndicators);
+        Assert.True(s.IndicatorsFetched);
     }
 
     [Fact]
@@ -102,6 +102,6 @@ public class FetchCoordinatorTests : IDisposable
 
         Assert.False(updated);
         Assert.False(coord.IsFresh(code));       // 失敗はキャッシュしない(次回再試行)
-        Assert.True(store.Get(code)!.IsSampleIndicators);
+        Assert.False(store.Get(code)!.IndicatorsFetched);
     }
 }

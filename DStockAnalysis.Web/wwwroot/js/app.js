@@ -115,10 +115,20 @@ const COLS = [
 
 function cell(col, s) {
   const v = s[col.k];
+  const unf = !s.IndicatorsFetched;
+  // 基本情報(コード・銘柄名・市場等)は常に表示。指標・スコアは未取得なら「-」。
   switch (col.kind) {
-    case "id": return `<td class="sticky">${esc(v)}${s.IsSampleIndicators ? ' <span class="sample-dot" title="サンプル指標">*</span>' : ""}</td>`;
+    case "id": return `<td class="sticky">${esc(v)}${unf ? ' <span class="flag-off" title="実データ未取得">未</span>' : ""}</td>`;
     case "name": return `<td class="sticky2">${esc(v)}</td>`;
-    case "text": return `<td>${esc(v)}</td>`;
+    case "text":
+      if (unf && col.k === "Theme") return `<td></td>`;
+      return `<td>${esc(v)}</td>`;
+  }
+  if (unf) { // 指標未取得は色なしの「-」
+    if (col.kind === "flag" || col.kind === "flaglong") return `<td><span class="flag-off">-</span></td>`;
+    return `<td class="num">-</td>`;
+  }
+  switch (col.kind) {
     case "comma": return `<td class="num">${fcomma(v)}</td>`;
     case "cfcomma": return `<td class="num ${qClass(col.m, v)}">${fcomma(v)}</td>`;
     case "num": return `<td class="num ${col.m ? qClass(col.m, v) : ""}">${fnum(v, col.d)}</td>`;
@@ -261,9 +271,10 @@ function renderResults() {
     tr.oncontextmenu = (e) => { e.preventDefault(); addToCompare(tr.dataset.code); };
   });
   document.getElementById("resultText").textContent = `${state.results.length} 件 (行をダブルクリックで個別分析 / 右クリックで比較に追加)`;
-  const sample = state.meta.SampleCount;
+  const unf = state.meta.UnfetchedCount, fetched = state.meta.FetchedCount;
   document.getElementById("indicatorNotice").innerHTML =
-    sample > 0 ? `全 ${state.meta.Total} 銘柄 / うち <span class="sample-dot">${sample}</span> 件は指標がサンプル値(*)` : `全 ${state.meta.Total} 銘柄`;
+    `全 ${state.meta.Total} 銘柄 / 実データ取得済み <b>${fetched}</b> 件` +
+    (unf > 0 ? ` ・ <span class="flag-off">未取得 ${unf} 件</span>(銘柄を開くと取得)` : "");
 }
 
 // ===== プリセット =====
@@ -343,9 +354,9 @@ function renderDetail() {
     <div class="tags">
       <span>${esc(s.Market)}</span><span>${esc(s.Sector)}</span><span>${esc(s.Scale)}</span>
       ${s.Theme ? `<span>${esc(s.Theme)}</span>` : ""}${s.FiscalMonth ? `<span>決算 ${esc(s.FiscalMonth)}</span>` : ""}
-      ${s.IsSampleIndicators
-        ? `<span class="sample-dot">指標はサンプル値</span>`
-        : `<span class="flag-on">実データ${state.lastFetched ? "(" + new Date(state.lastFetched).toLocaleDateString("ja-JP") + ")" : ""}</span>`}
+      ${s.IndicatorsFetched
+        ? `<span class="flag-on">実データ${state.lastFetched ? "(" + new Date(state.lastFetched).toLocaleDateString("ja-JP") + ")" : ""}</span>`
+        : `<span class="flag-off">実データ未取得</span>`}
       <button class="btn" id="btnRefresh" style="margin-left:6px">実データ更新</button>
     </div>
     ${s.Description ? `<div class="desc">${esc(s.Description)}</div>` : ""}
@@ -409,8 +420,7 @@ function renderDetail() {
         ${metricCard("長期保有優遇", s.HasLongTermBenefit ? "あり" : "なし")}
         ${metricCard("権利確定月", s.BenefitRightsMonth || "-")}
       </div>
-      ${s.BenefitRiskMemo ? `<div class="desc">廃止リスク: ${esc(s.BenefitRiskMemo)}</div>` : ""}
-      ${s.IsSampleIndicators ? `<div class="desc"><span class="sample-dot">※ サンプル値</span></div>` : ""}`}
+      ${s.BenefitRiskMemo ? `<div class="desc">廃止リスク: ${esc(s.BenefitRiskMemo)}</div>` : ""}`}
     </div>
 
     <div class="box">
