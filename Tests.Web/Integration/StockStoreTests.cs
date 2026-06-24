@@ -171,6 +171,25 @@ public class StockStoreTests : IDisposable
     }
 
     [Fact]
+    public void UpdatePrice_RefreshesPriceAndRederivesMetrics()
+    {
+        var store = NewStore();
+        var code = store.AllCodes().First();
+        // 会社予想ベースの指標を反映(株探相当): PER/PBR/配当利回り。EPS等は派生。
+        store.ApplyFetched(new[] { (code, new Dictionary<string, string>
+            { ["PER"] = "10", ["PBR"] = "2", ["DividendYield"] = "4" }) });
+
+        // 後日、株価が分割等で変わった想定 → 株価だけ最新化
+        var s = store.UpdatePrice(code, 1000);
+        Assert.NotNull(s);
+        Assert.Equal(1000, s!.Price, 3);
+        Assert.Equal(100, s.EPS, 1);        // 1000/PER10
+        Assert.Equal(500, s.BPS, 0);        // 1000/PBR2
+        Assert.Equal(40, s.Dividend, 1);    // 1000×4%/...=40
+        Assert.Equal(40, s.PayoutRatio, 0); // 40/EPS100×100
+    }
+
+    [Fact]
     public void ExportTemplate_ContainsHeaderAndAllCodes()
     {
         var store = NewStore();

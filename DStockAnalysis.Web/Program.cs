@@ -75,21 +75,32 @@ app.MapPost("/api/screen", (ScreeningCriteria criteria, StockStore store) =>
 // オンデマンド取得: 銘柄を開いた時、指標がサンプル値(または refresh 指定)なら
 // その場で実値を取得して反映する(robots順守。取得済みはキャッシュで即時返却)。
 app.MapGet("/api/stocks/{code}", async (string code, bool? refresh,
-    StockStore store, FetchCoordinator coord, FetchOptions opt, CancellationToken ct) =>
+    StockStore store, FetchCoordinator coord, YahooFinanceClient yahoo, FetchOptions opt, CancellationToken ct) =>
 {
     var s = store.Get(code);
     if (s == null) return Results.NotFound();
 
-    if (opt.OnDemand && (refresh == true || !s.IndicatorsFetched))
+    if (opt.OnDemand)
     {
         try
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(TimeSpan.FromSeconds(20)); // 遅いサイトでも応答を返す
-            await coord.FetchOneAsync(code, refresh == true, cts.Token);
+            if (refresh == true || !s.IndicatorsFetched)
+            {
+                await coord.FetchOneAsync(code, refresh == true, cts.Token); // 全指標を取得(株価も最新)
+            }
+            else
+            {
+                // 取得済みでも株価だけは毎回最新化(日々変動・株式分割の反映のため)
+                var p = await yahoo.GetChartPriceAsync(code, cts.Token);
+                if (p != null && double.TryParse(p, System.Globalization.NumberStyles.Any,
+                        System.Globalization.CultureInfo.InvariantCulture, out var pv))
+                    store.UpdatePrice(code, pv);
+            }
             s = store.Get(code) ?? s; // 反映後の最新を返す
         }
-        catch { /* 取得失敗時は既存(サンプル)値のまま返す */ }
+        catch { /* 取得失敗時は既存値のまま返す */ }
     }
 
     return Results.Ok(new { stock = s, links = store.Links(code), lastFetched = coord.LastFetched(code) });
