@@ -172,10 +172,9 @@ public class IndicatorFetchService : IIndicatorFetcher
 
     public static Dictionary<string, string> ParseKabutan(string html, string code)
     {
-        var t = Strip(html);
         var d = new Dictionary<string, string>();
-        // 現在値。例: 現在値 2,694 ( 19:46 06/24 )
-        Put(d, "Price", Find(t, @"現在値[^0-9\-]*([0-9,]+(?:\.[0-9]+)?)"));
+        // 注: 株価(現在値)は株探のテキスト位置が銘柄により不安定(日付"06"を誤取得する等)なため取得しない。
+        //     株価は Yahoo! の構造化データ(regularMarketPrice)を使う。株探は会社予想の指標のみ担当。
 
         // 株価指標テーブル(会社予想ベース): PER / PBR / 利回り の3セル。"－" は欠損として扱う。
         // 例: ...利回り</th><th>信用倍率</th></tr></thead><tbody><tr>
