@@ -31,7 +31,7 @@ public class IndicatorFetchServiceTests
                    "<td class=\"v_zika2\">42<span>兆</span>4,253<span>億円</span></td></tr></tbody></table>" +
                    " 現在値 2,694 ( 19:46 06/24 )";
         var d = IndicatorFetchService.ParseKabutan(html, "7203");
-        Assert.Equal("2694", d["Price"]);
+        Assert.False(d.ContainsKey("Price")); // 株価は株探から取らない(Yahoo を使用)
         Assert.Equal("10.6", d["PER"]);          // 会社予想PER
         Assert.Equal("0.8", d["PBR"]);
         Assert.Equal("3.72", d["DividendYield"]);

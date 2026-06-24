@@ -31,20 +31,48 @@ public class YahooFinanceClient
         _http.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/json,text/plain,*/*");
     }
 
-    /// <summary>1銘柄の主要指標を取得する。取得できなければ空辞書。</summary>
+    /// <summary>1銘柄の指標を取得する。取得できなければ空辞書。
+    /// 株価は chart API(crumb 不要で堅牢)を最優先、財務系は quoteSummary を使う。</summary>
     public async Task<Dictionary<string, string>> FetchAsync(string code, CancellationToken ct)
     {
+        var d = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         try
         {
             var json = await GetSummaryAsync(code, ct);
-            if (json == null) return new();
-            return ParseQuoteSummary(json);
+            if (json != null) foreach (var kv in ParseQuoteSummary(json)) d[kv.Key] = kv.Value;
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            _log.LogInformation("[yahoo] {Code}: {Msg}", code, e.Message);
-            return new();
+            _log.LogInformation("[yahoo] quoteSummary {Code}: {Msg}", code, e.Message);
         }
+
+        // 株価は chart API(認証不要)で確実に取得し上書きする(現在値)。
+        var price = await GetChartPriceAsync(code, ct);
+        if (price != null) d["Price"] = price;
+
+        return d;
+    }
+
+    /// <summary>chart API から現在値(regularMarketPrice)を取得する。crumb 不要で最も堅牢。</summary>
+    public async Task<string?> GetChartPriceAsync(string code, CancellationToken ct)
+    {
+        try
+        {
+            var url = $"https://query1.finance.yahoo.com/v8/finance/chart/{code}.T?interval=1d&range=1d";
+            using var res = await _http.GetAsync(url, ct);
+            if (!res.IsSuccessStatusCode) return null;
+            using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync(ct));
+            var result = doc.RootElement.GetProperty("chart").GetProperty("result");
+            if (result.ValueKind != JsonValueKind.Array || result.GetArrayLength() == 0) return null;
+            var meta = result[0].GetProperty("meta");
+            if (meta.TryGetProperty("regularMarketPrice", out var p) && p.ValueKind == JsonValueKind.Number && p.GetDouble() > 0)
+                return Math.Round(p.GetDouble(), 2).ToString(CultureInfo.InvariantCulture);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            _log.LogInformation("[yahoo] chart {Code}: {Msg}", code, e.Message);
+        }
+        return null;
     }
 
     private async Task<string?> GetSummaryAsync(string code, CancellationToken ct)
