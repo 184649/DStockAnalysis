@@ -171,6 +171,29 @@ public class StockStore
     /// <summary>銘柄データを永続化する(取得バッチからの間引き保存用)。</summary>
     public void Persist() { lock (_lock) _storage.SaveStocks(_stocks); }
 
+    /// <summary>株価のみを最新値に更新し、株価依存の派生指標(EPS/BPS/配当/性向/MIX)を再算出する。
+    /// 株価は日々変動・分割で変わるため、銘柄を開くたびに最新化する(財務指標はキャッシュ)。
+    /// 保存は行わない(軽量化。永続化は全体取得/巡回時に実施)。</summary>
+    public Stock? UpdatePrice(string code, double price)
+    {
+        lock (_lock)
+        {
+            if (!_byCode.TryGetValue(code, out var s)) return null;
+            if (price <= 0 || !s.IndicatorsFetched) return s;
+            s.Price = price;
+            if (s.PER > 0) s.EPS = Math.Round(price / s.PER, 1);
+            if (s.PBR > 0) s.BPS = Math.Round(price / s.PBR);
+            if (s.PER > 0 && s.PBR > 0) s.MixFactor = Math.Round(s.PER * s.PBR, 1);
+            if (s.DividendYield > 0)
+            {
+                s.Dividend = Math.Round(price * s.DividendYield / 100, 1);
+                if (s.EPS > 0) s.PayoutRatio = Math.Round(s.Dividend / s.EPS * 100, 1);
+            }
+            _scorer.Recalculate(s);
+            return s;
+        }
+    }
+
     /// <summary>取得済みの指標行(列単位)を全銘柄へ反映する。自動取得バッチから呼ばれる。
     /// save=false の場合は保存しない(呼び出し側でまとめて Persist する)。</summary>
     public int ApplyFetched(IEnumerable<(string code, Dictionary<string, string> values)> rows, bool save = true)
