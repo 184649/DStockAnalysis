@@ -128,6 +128,9 @@ function cell(col, s) {
     if (col.kind === "flag" || col.kind === "flaglong") return `<td><span class="flag-off">-</span></td>`;
     return `<td class="num">-</td>`;
   }
+  // 取得済みでも個別に値が無い(0)指標は「-」(営業利益率・増収率など出典の無い項目)
+  if (["comma", "cfcomma", "num", "score", "buffett"].includes(col.kind) && (v == null || Number(v) === 0))
+    return `<td class="num">-</td>`;
   switch (col.kind) {
     case "comma": return `<td class="num">${fcomma(v)}</td>`;
     case "cfcomma": return `<td class="num ${qClass(col.m, v)}">${fcomma(v)}</td>`;
@@ -341,7 +344,12 @@ const MEMO_FIELDS = [
 function scoreCard(label, v, metric) {
   return `<div class="card score"><div class="k">${label}</div><div class="v" style="background:${scoreColor(v, metric)}">${fnum(v, 0)}</div></div>`;
 }
-function metricCard(label, v, suffix = "") { return `<div class="card"><div class="k">${label}</div><div class="v">${typeof v === "number" ? fnum(v, 2) : esc(v)}${suffix}</div></div>`; }
+function metricCard(label, v, suffix = "") {
+  let disp;
+  if (typeof v === "number") disp = (v === 0 || isNaN(v)) ? "-" : fnum(v, 2) + suffix; // 0(出典なし)は「-」
+  else disp = (v == null || v === "" || v === "-") ? "-" : esc(v) + suffix;
+  return `<div class="card"><div class="k">${label}</div><div class="v">${disp}</div></div>`;
+}
 
 function renderDetail() {
   const s = state.selected;

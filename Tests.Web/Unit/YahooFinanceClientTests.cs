@@ -17,50 +17,30 @@ public class YahooFinanceClientTests
     }],""error"":null}}";
 
     [Fact]
-    public void ParseQuoteSummary_ExtractsAndConvertsMetrics()
+    public void ParseQuoteSummary_ExtractsFinancialExtrasOnly()
     {
+        // Yahoo からは収益性・財務・CF のみ採用。バリュエーション(PER/PBR/利回り/EPS)は株探(会社予想)を使う。
         var d = YahooFinanceClient.ParseQuoteSummary(Sample);
-        Assert.Equal("2706", d["Price"]);          // 現在値(前日終値ではない)
-        Assert.Equal("9.16", d["PER"]);
-        Assert.Equal("0.88", d["PBR"]);
-        Assert.Equal("295.26", d["EPS"]);
-        Assert.Equal("3063", d["BPS"]);            // bookValue 丸め
-        Assert.Equal("95", d["Dividend"]);         // 1株配当
-        Assert.Equal("3.65", d["DividendYield"]);  // 0.0365 → %
-        Assert.Equal("32.18", d["PayoutRatio"]);   // 0.3218 → %
+        Assert.Equal("2706", d["Price"]);          // 株探不通時の予備として保持
         Assert.Equal("10.23", d["ROE"]);           // 0.10233 → %
         Assert.Equal("7.59", d["NetProfitMargin"]);// 0.07592 → %
-        Assert.Equal("1.9", d["RevenueGrowthRate"]);// 0.019 → %
-        Assert.Equal("23.2", d["NetProfitGrowthRate"]);// 0.232 → %
         Assert.Equal("107.06", d["InterestBearingDebtRatio"]);
         Assert.Equal("5472920", d["OperatingCF"]); // 円→百万円
         Assert.Equal("-1204836", d["FreeCashFlow"]);
         Assert.Equal("10.8", d["OperatingCashFlowMargin"]); // opCF/revenue
-        // 時価総額・営業利益率は採用しない(過少・不正確のため)
-        Assert.False(d.ContainsKey("MarketCap"));
-        Assert.False(d.ContainsKey("OperatingMargin"));
+        // バリュエーション系・成長率・時価総額・営業利益率は Yahoo から採らない
+        foreach (var k in new[] { "PER", "PBR", "EPS", "BPS", "DividendYield", "PayoutRatio",
+                                  "Dividend", "RevenueGrowthRate", "NetProfitGrowthRate", "MarketCap", "OperatingMargin" })
+            Assert.False(d.ContainsKey(k), $"{k} は Yahoo から採用しない");
     }
 
     [Fact]
-    public void ParseQuoteSummary_NoDividend_YieldAndPayoutZero()
+    public void ParseQuoteSummary_NoFinancials_ReturnsEmpty()
     {
-        var json = @"{""quoteSummary"":{""result"":[{
-            ""price"":{""regularMarketPrice"":{""raw"":1850.0}},
-            ""summaryDetail"":{""trailingPE"":{""raw"":9.0}},
-            ""defaultKeyStatistics"":{""priceToBook"":{""raw"":1.3},""trailingEps"":{""raw"":205.0}}
-        }]}}";
+        // 価格も財務も無ければ空(株探等から取得する)
+        var json = @"{""quoteSummary"":{""result"":[{""summaryDetail"":{}}]}}";
         var d = YahooFinanceClient.ParseQuoteSummary(json);
-        Assert.Equal("1850", d["Price"]);
-        Assert.Equal("0", d["DividendYield"]); // 無配は 0
-        Assert.Equal("0", d["PayoutRatio"]);
-    }
-
-    [Fact]
-    public void ParseQuoteSummary_NoPrice_ReturnsEmpty()
-    {
-        var json = @"{""quoteSummary"":{""result"":[{""summaryDetail"":{""trailingPE"":{""raw"":10.0}}}]}}";
-        var d = YahooFinanceClient.ParseQuoteSummary(json);
-        Assert.Empty(d); // 株価が取れなければ信頼できないので何も返さない
+        Assert.Empty(d);
     }
 
     [Fact]
