@@ -1,8 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0-windows</TargetFramework>
-    <UseWPF>true</UseWPF>
+    <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
@@ -17,10 +16,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\DStockAnalysis.csproj" />
+    <ProjectReference Include="..\DStockAnalysis.Core\DStockAnalysis.Core.csproj" />
   </ItemGroup>
 
-  <!-- JPX マスタをテスト出力にも配置(JpxMasterService / MainViewModel の検証用) -->
+  <!-- JPX マスタをテスト出力へ配置(JpxMasterService の検証用) -->
   <ItemGroup>
     <None Include="..\Data\data_j.xls" Link="Data\data_j.xls">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
