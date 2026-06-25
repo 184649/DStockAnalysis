@@ -17,9 +17,9 @@ builder.Services.ConfigureHttpJsonOptions(o =>
 // 自動取得用 HttpClient(タイムアウト・UA はサービス側で設定)
 builder.Services.AddHttpClient("scraper", c => c.Timeout = TimeSpan.FromSeconds(25));
 
-// 設定
-var fetchOptions = builder.Configuration.GetSection("Fetch").Get<FetchOptions>() ?? new FetchOptions();
-builder.Services.AddSingleton(fetchOptions);
+// 設定(DI 解決時に最終構成から束縛する。テストの設定上書き等も確実に反映される)
+builder.Services.AddSingleton(sp =>
+    sp.GetRequiredService<IConfiguration>().GetSection("Fetch").Get<FetchOptions>() ?? new FetchOptions());
 
 // アプリケーションサービス(シングルトン)
 builder.Services.AddSingleton<StockStore>();
@@ -88,13 +88,14 @@ app.MapGet("/api/stocks/{code}", async (string code, bool? refresh,
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(TimeSpan.FromSeconds(20)); // 遅いサイトでも応答を返す
-            if (refresh == true || !s.IndicatorsFetched)
+            if (refresh == true || !coord.IsFresh(code))
             {
-                await coord.FetchOneAsync(code, refresh == true, cts.Token); // 全指標を取得(株価も最新)
+                // 会社予想(株探)で未取得 → 全指標を取得(暫定のYahoo値を会社予想で上書き)
+                await coord.FetchOneAsync(code, refresh == true, cts.Token);
             }
             else
             {
-                // 取得済みでも株価だけは毎回最新化(日々変動・株式分割の反映のため)
+                // 会社予想で取得済み → 株価だけ毎回最新化(日々変動・株式分割の反映のため)
                 var p = await yahoo.GetChartPriceAsync(code, cts.Token);
                 if (p != null && double.TryParse(p, System.Globalization.NumberStyles.Any,
                         System.Globalization.CultureInfo.InvariantCulture, out var pv))

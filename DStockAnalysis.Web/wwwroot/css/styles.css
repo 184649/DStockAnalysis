@@ -107,14 +107,21 @@ main { flex: 1; overflow: hidden; }
 .table-wrap { flex: 1; overflow: auto; }
 
 table.grid { border-collapse: collapse; width: max-content; min-width: 100%; font-size: 12px; }
-table.grid th, table.grid td { border: 1px solid var(--grid); padding: 4px 7px; white-space: nowrap; }
-table.grid th { background: #1d2329; position: sticky; top: 0; z-index: 2; color: var(--sub); font-weight: 600; }
+table.grid th, table.grid td { border: 1px solid var(--grid); padding: 5px 8px; white-space: nowrap; }
+table.grid th { background: #1d2329; position: sticky; top: 0; z-index: 2; color: var(--sub); font-weight: 600;
+  cursor: pointer; user-select: none; }
+table.grid th:hover { color: var(--text); background: #232b33; }
+table.grid th .arrow { color: var(--accent); margin-left: 3px; font-size: 10px; }
 table.grid td.num { text-align: right; font-variant-numeric: tabular-nums; }
-table.grid td.sticky, table.grid th.sticky { position: sticky; left: 0; background: #1d2329; z-index: 1; }
+/* 偶数行の薄いゼブラ(可読性) */
+table.grid tbody tr:nth-child(even) td { background: #20262d; }
+table.grid tbody tr:nth-child(even) td.sticky, table.grid tbody tr:nth-child(even) td.sticky2 { background: #20262d; }
+table.grid td.sticky, table.grid th.sticky { position: sticky; left: 0; background: #1b2026; z-index: 1; }
 table.grid th.sticky { z-index: 3; }
-table.grid td.sticky2, table.grid th.sticky2 { position: sticky; left: 56px; background: #1d2329; z-index: 1; }
+table.grid td.sticky2, table.grid th.sticky2 { position: sticky; left: 64px; background: #1b2026; z-index: 1; }
 table.grid th.sticky2 { z-index: 3; }
-table.grid tbody tr:hover td { outline: 1px solid var(--accent); }
+/* ホバー行を行全体で強調(固定列・色付きセルの上にも均一に重ねる) */
+table.grid tbody tr:hover td { box-shadow: inset 0 0 0 9999px rgba(45,156,219,0.16); }
 table.grid tbody tr { cursor: pointer; }
 .sample-dot { color: var(--caution-solid); font-weight: bold; }
 

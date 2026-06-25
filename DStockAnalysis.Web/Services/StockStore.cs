@@ -222,6 +222,7 @@ public class StockStore
     /// 実データ優待は CSV 取込で反映する。</summary>
     private static void ClearUnverifiedBenefit(Stock s)
     {
+        if (!s.BenefitUnknown) return; // CSV取込済みの実データ優待は消さない
         s.HasShareholderBenefit = false;
         s.ShareholderBenefit = "";
         s.BenefitContent = "";

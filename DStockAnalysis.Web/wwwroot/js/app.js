@@ -27,6 +27,7 @@ const state = {
   allCache: [],      // 個別分析・比較の一覧用(全件 summary)
   selected: null,    // 個別分析で選択中の詳細 stock
   compare: [],       // 比較対象コード
+  sort: { key: null, dir: 1 }, // 一覧の並べ替え(列キー, 1=昇順/-1=降順)
 };
 
 // ===== 条件付き書式(Converters.cs の MetricRules.Evaluate を移植) =====
@@ -259,25 +260,57 @@ async function runScreen() {
   renderResults();
 }
 
+// 列ヘッダークリックでソート。欠損(未取得/0/空)は常に末尾。
+function sortResults() {
+  const key = state.sort.key; if (!key) return;
+  const col = COLS.find(c => c.k === key); if (!col) return;
+  const dir = state.sort.dir;
+  const isNum = !["id", "name", "text"].includes(col.kind);
+  const val = (s) => {
+    const v = s[key];
+    if (isNum) {
+      if (!s.IndicatorsFetched) return null;
+      const n = Number(v);
+      return (v == null || isNaN(n) || n === 0) ? null : n;
+    }
+    return (v == null || v === "") ? null : String(v);
+  };
+  state.results.sort((a, b) => {
+    const va = val(a), vb = val(b);
+    if (va == null && vb == null) return 0;
+    if (va == null) return 1;          // 欠損は末尾
+    if (vb == null) return -1;
+    return va < vb ? -dir : va > vb ? dir : 0;
+  });
+}
+
 function renderResults() {
+  sortResults();
   const t = document.getElementById("screenTable");
-  let head = "<thead><tr>" + COLS.map((c, i) => {
+  let head = "<thead><tr>" + COLS.map((c) => {
     const cls = c.kind === "id" ? "sticky" : c.kind === "name" ? "sticky2" : "";
-    return `<th class="${cls}">${c.label}</th>`;
+    const arrow = state.sort.key === c.k ? `<span class="arrow">${state.sort.dir > 0 ? "▲" : "▼"}</span>` : "";
+    return `<th class="${cls}" data-key="${esc(c.k)}" title="クリックで並べ替え">${c.label}${arrow}</th>`;
   }).join("") + "</tr></thead>";
   let body = "<tbody>" + state.results.map(s =>
     `<tr data-code="${esc(s.Code)}">` + COLS.map(c => cell(c, s)).join("") + "</tr>"
   ).join("") + "</tbody>";
   t.innerHTML = head + body;
+  t.querySelectorAll("thead th").forEach(th => th.onclick = () => {
+    const k = th.dataset.key;
+    if (state.sort.key === k) state.sort.dir = -state.sort.dir;
+    else { state.sort.key = k; state.sort.dir = 1; }
+    renderResults();
+  });
   t.querySelectorAll("tbody tr").forEach(tr => {
     tr.ondblclick = () => openAnalysis(tr.dataset.code);
     tr.oncontextmenu = (e) => { e.preventDefault(); addToCompare(tr.dataset.code); };
   });
-  document.getElementById("resultText").textContent = `${state.results.length} 件 (行をダブルクリックで個別分析 / 右クリックで比較に追加)`;
+  document.getElementById("resultText").textContent = `${state.results.length} 件 (行をダブルクリックで個別分析 / 右クリックで比較に追加 / 見出しクリックで並べ替え)`;
   const unf = state.meta.UnfetchedCount, fetched = state.meta.FetchedCount;
   document.getElementById("indicatorNotice").innerHTML =
     `全 ${state.meta.Total} 銘柄 / 実データ取得済み <b>${fetched}</b> 件` +
-    (unf > 0 ? ` ・ <span class="flag-off">未取得 ${unf} 件</span>(銘柄を開くと取得)` : "");
+    (unf > 0 ? ` ・ <span class="flag-off">未取得 ${unf} 件</span>(銘柄を開くと最新化)` : "");
 }
 
 // ===== プリセット =====
