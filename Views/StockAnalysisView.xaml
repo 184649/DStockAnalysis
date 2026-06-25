@@ -141,11 +141,11 @@
                         <Border Style="{StaticResource MetricCard}"><StackPanel><TextBlock Text="時価総額(百万)" Style="{StaticResource CardLabel}"/><TextBlock Text="{Binding SelectedStock.MarketCap, StringFormat=N0}" Style="{StaticResource CardValue}" FontSize="16"/></StackPanel></Border>
                         <Border Style="{StaticResource MetricCard}"><StackPanel><TextBlock Text="PER" Style="{StaticResource CardLabel}"/><TextBlock Text="{Binding SelectedStock.PER, StringFormat=0.0倍}" Style="{StaticResource CardValue}"/></StackPanel></Border>
                         <Border Style="{StaticResource MetricCard}"><StackPanel><TextBlock Text="PBR" Style="{StaticResource CardLabel}"/><TextBlock Text="{Binding SelectedStock.PBR, StringFormat=0.00倍}" Style="{StaticResource CardValue}"/></StackPanel></Border>
-                        <Border Style="{StaticResource MetricCard}"><StackPanel><TextBlock Text="ROE" Style="{StaticResource CardLabel}"/><TextBlock Text="{Binding SelectedStock.ROE, StringFormat=0.0%}" Style="{StaticResource CardValue}"/></StackPanel></Border>
+                        <Border Style="{StaticResource MetricCard}"><StackPanel><TextBlock Text="ROE" Style="{StaticResource CardLabel}"/><TextBlock Text="{Binding SelectedStock.ROE, StringFormat={}{0:0.0}%}" Style="{StaticResource CardValue}"/></StackPanel></Border>
                         <Border Style="{StaticResource MetricCard}"><StackPanel><TextBlock Text="MIX係数" Style="{StaticResource CardLabel}"/><TextBlock Text="{Binding SelectedStock.MixFactor, StringFormat=0.0}" Style="{StaticResource CardValue}"/></StackPanel></Border>
-                        <Border Style="{StaticResource MetricCard}"><StackPanel><TextBlock Text="自己資本比率" Style="{StaticResource CardLabel}"/><TextBlock Text="{Binding SelectedStock.EquityRatio, StringFormat=0.0%}" Style="{StaticResource CardValue}"/></StackPanel></Border>
-                        <Border Style="{StaticResource MetricCard}"><StackPanel><TextBlock Text="配当利回り" Style="{StaticResource CardLabel}"/><TextBlock Text="{Binding SelectedStock.DividendYield, StringFormat=0.00%}" Style="{StaticResource CardValue}"/></StackPanel></Border>
-                        <Border Style="{StaticResource MetricCard}"><StackPanel><TextBlock Text="配当性向" Style="{StaticResource CardLabel}"/><TextBlock Text="{Binding SelectedStock.PayoutRatio, StringFormat=0.0%}" Style="{StaticResource CardValue}"/></StackPanel></Border>
+                        <Border Style="{StaticResource MetricCard}"><StackPanel><TextBlock Text="自己資本比率" Style="{StaticResource CardLabel}"/><TextBlock Text="{Binding SelectedStock.EquityRatio, StringFormat={}{0:0.0}%}" Style="{StaticResource CardValue}"/></StackPanel></Border>
+                        <Border Style="{StaticResource MetricCard}"><StackPanel><TextBlock Text="配当利回り" Style="{StaticResource CardLabel}"/><TextBlock Text="{Binding SelectedStock.DividendYield, StringFormat={}{0:0.00}%}" Style="{StaticResource CardValue}"/></StackPanel></Border>
+                        <Border Style="{StaticResource MetricCard}"><StackPanel><TextBlock Text="配当性向" Style="{StaticResource CardLabel}"/><TextBlock Text="{Binding SelectedStock.PayoutRatio, StringFormat={}{0:0.0}%}" Style="{StaticResource CardValue}"/></StackPanel></Border>
                         <Border Style="{StaticResource MetricCard}">
                             <StackPanel>
                                 <TextBlock Text="総合評価" Style="{StaticResource CardLabel}"/>
@@ -248,11 +248,11 @@
                                     <TextBlock Grid.Row="0" Grid.Column="0" Text="株主優待" Style="{StaticResource Sub}"/>
                                     <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SelectedStock.HasShareholderBenefit, Converter={StaticResource BoolFlag}}" Foreground="{Binding SelectedStock.HasShareholderBenefit, Converter={StaticResource FlagBrush}}"/>
                                     <TextBlock Grid.Row="1" Grid.Column="0" Text="優待利回り" Style="{StaticResource Sub}"/>
-                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedStock.BenefitYield, StringFormat=0.00%}"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedStock.BenefitYield, StringFormat={}{0:0.00}%}"/>
                                     <TextBlock Grid.Row="2" Grid.Column="0" Text="配当利回り" Style="{StaticResource Sub}"/>
-                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedStock.DividendYield, StringFormat=0.00%}"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedStock.DividendYield, StringFormat={}{0:0.00}%}"/>
                                     <TextBlock Grid.Row="3" Grid.Column="0" Text="総合利回り" Style="{StaticResource Sub}"/>
-                                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedStock.TotalYield, StringFormat=0.00%}" FontWeight="Bold"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedStock.TotalYield, StringFormat={}{0:0.00}%}" FontWeight="Bold"/>
                                     <TextBlock Grid.Row="4" Grid.Column="0" Text="必要株数" Style="{StaticResource Sub}"/>
                                     <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding SelectedStock.RequiredSharesForBenefit, StringFormat=N0株}"/>
                                     <TextBlock Grid.Row="5" Grid.Column="0" Text="優待価値" Style="{StaticResource Sub}"/>
