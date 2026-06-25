@@ -156,7 +156,13 @@ dotnet publish DStockAnalysis.csproj -c Release -r win-x64 --self-contained true
 
 ## Web 版ローカル起動
 
-開発・動作確認用にローカルで Web 版を起動する手順です(Windows / macOS / Linux 共通)。
+> **どちらを起動するか**: 実データ(株価・指標)を見たい場合は **Web 版**を起動してください。
+> デスクトップ版(`run.bat` / `DStockAnalysis.exe`)は**サンプル(擬似)値**のデモ用で、実データは表示しません。
+
+**(かんたん起動・Windows)** リポジトリ直下の **`run-web.bat` をダブルクリック**。
+ビルド後にサーバが起動し、ブラウザで `http://localhost:5000` が自動で開きます(銘柄を開くと実データを取得)。
+
+**(コマンドで起動・Windows/macOS/Linux 共通)**
 
 1. .NET 8 SDK を導入(`dotnet --version` で 8.x を確認)。
 2. リポジトリ直下で次を実行:
