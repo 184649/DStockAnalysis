@@ -51,6 +51,25 @@ public class YahooFinanceClientTests
     }
 
     [Fact]
+    public void ParseQuoteIndicators_ExtractsListFields()
+    {
+        var json = @"{""quoteResponse"":{""result"":[
+            {""symbol"":""8001.T"",""regularMarketPrice"":1814.0,""trailingPE"":14.17,""priceToBook"":1.92,
+             ""epsTrailingTwelveMonths"":128.06,""bookValue"":944.0,""dividendYield"":0.0231,""trailingAnnualDividendRate"":42.0},
+            {""symbol"":""9999.T""}
+        ]}}";
+        var d = YahooFinanceClient.ParseQuoteIndicators(json);
+        var s = d["8001"];
+        Assert.Equal("1814", s["Price"]);
+        Assert.Equal("14.17", s["PER"]);
+        Assert.Equal("1.92", s["PBR"]);
+        Assert.Equal("128.1", s["EPS"]);
+        Assert.Equal("2.32", s["DividendYield"]); // 1株配当42 / 株価1814 × 100
+        Assert.Equal("27.2", s["MixFactor"]);      // PER×PBR(小数1桁)
+        Assert.False(d.ContainsKey("9999"));        // 価格欠落は含めない
+    }
+
+    [Fact]
     public void ParseQuoteSummary_NoFinancials_ReturnsEmpty()
     {
         // 価格も財務も無ければ空(株探等から取得する)

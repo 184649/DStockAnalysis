@@ -100,6 +100,64 @@ public class YahooFinanceClient
         return d;
     }
 
+    /// <summary>複数銘柄の主要指標(株価/PER/PBR/利回り/EPS/BPS/配当)を一括取得する(v7/quote, 50件/req)。
+    /// 一覧を素早く埋めるための暫定値(PER は trailing)。会社予想の精密値は株探取得で上書きされる。</summary>
+    public async Task<Dictionary<string, Dictionary<string, string>>> GetQuoteIndicatorsAsync(IReadOnlyList<string> codes, CancellationToken ct)
+    {
+        var result = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < codes.Count; i += 50)
+        {
+            ct.ThrowIfCancellationRequested();
+            var batch = codes.Skip(i).Take(50).ToList();
+            var symbols = string.Join(",", batch.Select(c => c + ".T"));
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                var crumb = await EnsureCrumbAsync(ct);
+                if (string.IsNullOrEmpty(crumb)) return result;
+                var url = $"https://query1.finance.yahoo.com/v7/finance/quote?symbols={Uri.EscapeDataString(symbols)}&crumb={Uri.EscapeDataString(crumb)}";
+                using var res = await _http.GetAsync(url, ct);
+                if (res.StatusCode == HttpStatusCode.Unauthorized) { _crumb = null; continue; }
+                if (!res.IsSuccessStatusCode) break;
+                foreach (var kv in ParseQuoteIndicators(await res.Content.ReadAsStringAsync(ct))) result[kv.Key] = kv.Value;
+                break;
+            }
+            await Task.Delay(250, ct);
+        }
+        return result;
+    }
+
+    /// <summary>v7/quote JSON を コード→指標辞書 に解析する(テスト可能)。</summary>
+    public static Dictionary<string, Dictionary<string, string>> ParseQuoteIndicators(string json)
+    {
+        var outd = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+        using var doc = JsonDocument.Parse(json);
+        if (!doc.RootElement.TryGetProperty("quoteResponse", out var qr)) return outd;
+        if (!qr.TryGetProperty("result", out var arr) || arr.ValueKind != JsonValueKind.Array) return outd;
+        foreach (var q in arr.EnumerateArray())
+        {
+            if (!q.TryGetProperty("symbol", out var sym) || sym.ValueKind != JsonValueKind.String) continue;
+            var code = sym.GetString()!; var dot = code.IndexOf('.'); if (dot > 0) code = code[..dot];
+            double? G(string k) => q.TryGetProperty(k, out var e) && e.ValueKind == JsonValueKind.Number ? e.GetDouble() : null;
+            var price = G("regularMarketPrice");
+            if (price is null or <= 0) continue;
+            var d = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            void P(string k, double? v, int dec = 2) { if (v.HasValue) d[k] = Math.Round(v.Value, dec).ToString(CultureInfo.InvariantCulture); }
+            P("Price", price, 2);
+            var per = G("trailingPE"); if (per is > 0) P("PER", per, 2);
+            var pbr = G("priceToBook"); if (pbr is > 0) P("PBR", pbr, 2);
+            if (per is > 0 && pbr is > 0) P("MixFactor", per.Value * pbr.Value, 1);
+            P("EPS", G("epsTrailingTwelveMonths"), 1);
+            P("BPS", G("bookValue"), 0);
+            // 配当利回りは Yahoo の dividendYield(% と小数が混在し不安定)を使わず、
+            // 1株配当 / 株価 × 100 で算出する(曖昧さ排除)。
+            var dividend = G("trailingAnnualDividendRate");
+            if (dividend is > 0) P("Dividend", dividend, 1);
+            if (dividend is > 0 && price is > 0) P("DividendYield", dividend.Value / price.Value * 100, 2);
+            outd[code] = d;
+        }
+        return outd;
+    }
+
     /// <summary>chart API から現在値(regularMarketPrice)を取得する。crumb 不要で最も堅牢。</summary>
     public async Task<string?> GetChartPriceAsync(string code, CancellationToken ct)
     {
