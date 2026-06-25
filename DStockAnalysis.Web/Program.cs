@@ -30,6 +30,8 @@ builder.Services.AddSingleton<FetchCoordinator>();
 builder.Services.AddSingleton<PresetService>();
 builder.Services.AddSingleton<IndicatorFetchHostedService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<IndicatorFetchHostedService>());
+builder.Services.AddSingleton<PriceRefreshHostedService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<PriceRefreshHostedService>());
 
 var app = builder.Build();
 
@@ -148,6 +150,13 @@ app.MapPost("/api/admin/update-master", async (StockStore store) =>
 
 // ===== 自動取得: 状態参照 =====
 app.MapGet("/api/admin/fetch/status", (IndicatorFetchHostedService svc) => Results.Ok(svc.Snapshot()));
+
+// ===== 株価の一括最新化(手動トリガー) =====
+app.MapPost("/api/admin/price-refresh", async (PriceRefreshHostedService svc, CancellationToken ct) =>
+{
+    int n = await svc.RefreshAllAsync(ct);
+    return Results.Ok(new { refreshed = n });
+});
 
 // ===== 自動取得: 任意銘柄を即時取得(手動トリガー) =====
 app.MapPost("/api/admin/fetch/run", async (string? codes, bool? force,

@@ -53,6 +53,53 @@ public class YahooFinanceClient
         return d;
     }
 
+    /// <summary>複数銘柄の現在値を一括取得する(v7/quote, 50件/リクエスト)。一覧の株価最新化に使う。</summary>
+    public async Task<Dictionary<string, double>> GetQuotesAsync(IReadOnlyList<string> codes, CancellationToken ct)
+    {
+        var result = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < codes.Count; i += 50)
+        {
+            ct.ThrowIfCancellationRequested();
+            var batch = codes.Skip(i).Take(50).ToList();
+            var symbols = string.Join(",", batch.Select(c => c + ".T"));
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                var crumb = await EnsureCrumbAsync(ct);
+                if (string.IsNullOrEmpty(crumb)) return result;
+                var url = $"https://query1.finance.yahoo.com/v7/finance/quote?symbols={Uri.EscapeDataString(symbols)}&crumb={Uri.EscapeDataString(crumb)}";
+                using var res = await _http.GetAsync(url, ct);
+                if (res.StatusCode == HttpStatusCode.Unauthorized) { _crumb = null; continue; }
+                if (!res.IsSuccessStatusCode) break;
+                foreach (var kv in ParseQuotes(await res.Content.ReadAsStringAsync(ct))) result[kv.Key] = kv.Value;
+                break;
+            }
+            await Task.Delay(300, ct); // 軽い間隔
+        }
+        return result;
+    }
+
+    /// <summary>v7/quote JSON を コード→現在値 に解析する(テスト可能な純粋関数)。</summary>
+    public static Dictionary<string, double> ParseQuotes(string json)
+    {
+        var d = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        using var doc = JsonDocument.Parse(json);
+        if (!doc.RootElement.TryGetProperty("quoteResponse", out var qr)) return d;
+        if (!qr.TryGetProperty("result", out var arr) || arr.ValueKind != JsonValueKind.Array) return d;
+        foreach (var q in arr.EnumerateArray())
+        {
+            if (q.TryGetProperty("symbol", out var sym) && sym.ValueKind == JsonValueKind.String
+                && q.TryGetProperty("regularMarketPrice", out var p) && p.ValueKind == JsonValueKind.Number
+                && p.GetDouble() > 0)
+            {
+                var code = sym.GetString()!;
+                var dot = code.IndexOf('.');
+                if (dot > 0) code = code[..dot];
+                d[code] = p.GetDouble();
+            }
+        }
+        return d;
+    }
+
     /// <summary>chart API から現在値(regularMarketPrice)を取得する。crumb 不要で最も堅牢。</summary>
     public async Task<string?> GetChartPriceAsync(string code, CancellationToken ct)
     {

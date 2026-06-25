@@ -33,7 +33,8 @@ public class WebApiTests : IClassFixture<WebApiTests.ApiFactory>
                 {
                     ["DataDir"] = _dir,
                     ["Fetch:Enabled"] = "false",
-                    ["Fetch:OnDemand"] = "false" // テストでは外部サイトへアクセスしない
+                    ["Fetch:OnDemand"] = "false", // テストでは外部サイトへアクセスしない
+                    ["Fetch:PriceRefresh"] = "false"
                 }));
         }
 
