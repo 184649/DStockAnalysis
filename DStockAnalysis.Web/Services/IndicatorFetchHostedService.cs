@@ -7,6 +7,10 @@ public class FetchOptions
     public bool Enabled { get; set; } = false;
     /// <summary>個別分析で銘柄を開いた時に、その銘柄の実値をその場で取得するか。</summary>
     public bool OnDemand { get; set; } = true;
+    /// <summary>取得済み全銘柄の株価を定期的に一括最新化するか(一覧の古い/分割前価格を防ぐ)。</summary>
+    public bool PriceRefresh { get; set; } = true;
+    /// <summary>株価一括最新化の間隔(時間)。</summary>
+    public double PriceRefreshHours { get; set; } = 6;
     /// <summary>対象範囲: "all"=全銘柄 / "watchlist"=codes.txt の銘柄のみ。</summary>
     public string Scope { get; set; } = "all";
     /// <summary>リクエスト間隔の基準秒(robots の Crawl-delay と大きい方を採用)。</summary>

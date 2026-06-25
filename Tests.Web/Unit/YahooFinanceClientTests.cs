@@ -35,6 +35,22 @@ public class YahooFinanceClientTests
     }
 
     [Fact]
+    public void ParseQuotes_ExtractsCodeToPrice()
+    {
+        var json = @"{""quoteResponse"":{""result"":[
+            {""symbol"":""8001.T"",""regularMarketPrice"":1814.0},
+            {""symbol"":""7203.T"",""regularMarketPrice"":2700.5},
+            {""symbol"":""6861.T"",""regularMarketPrice"":77370.0},
+            {""symbol"":""9999.T""}
+        ],""error"":null}}";
+        var d = YahooFinanceClient.ParseQuotes(json);
+        Assert.Equal(1814.0, d["8001"]);   // ".T" は除去
+        Assert.Equal(2700.5, d["7203"]);
+        Assert.Equal(77370.0, d["6861"]);
+        Assert.False(d.ContainsKey("9999")); // 価格欠落は含めない
+    }
+
+    [Fact]
     public void ParseQuoteSummary_NoFinancials_ReturnsEmpty()
     {
         // 価格も財務も無ければ空(株探等から取得する)

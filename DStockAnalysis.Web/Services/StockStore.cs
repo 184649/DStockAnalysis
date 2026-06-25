@@ -308,6 +308,12 @@ public class StockStore
         lock (_lock) return _stocks.Select(s => s.Code).ToList();
     }
 
+    /// <summary>実データ取得済み(株価を持つ)銘柄のコード一覧。株価一括最新化の対象。</summary>
+    public IReadOnlyList<string> FetchedCodes()
+    {
+        lock (_lock) return _stocks.Where(s => s.IndicatorsFetched).Select(s => s.Code).ToList();
+    }
+
     // 候補値(コンボ用)
     public List<string> Sectors() { lock (_lock) return _stocks.Select(s => s.Sector).Where(x => !string.IsNullOrEmpty(x)).Distinct().OrderBy(x => x).ToList(); }
     public List<string> Markets() { lock (_lock) return _stocks.Select(s => s.Market).Where(x => !string.IsNullOrEmpty(x)).Distinct().OrderBy(x => x).ToList(); }
