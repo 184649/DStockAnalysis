@@ -117,6 +117,63 @@ public class WebApiTests : IClassFixture<WebApiTests.ApiFactory>
         Assert.Equal(7.77, detail.GetProperty("stock").GetProperty("PER").GetDouble(), 3);
     }
 
+    // ユーザー提示の網羅的 CSV を取り込み、一覧(/api/compare)と詳細(/api/stocks)の両方で
+    // 値が保持・表示されることを検証する(全指標が画面で確認できる不具合の回帰防止)。
+    private const string FullCsv =
+        "Code,PER,PBR,ROE,EPS,BPS,DividendYield,PayoutRatio,Dividend,EquityRatio,InterestBearingDebtRatio," +
+        "OperatingMargin,OrdinaryProfitMargin,NetProfitMargin,RevenueGrowth1Y,RevenueGrowth3Y,RevenueGrowth5Y,RevenueGrowth10Y," +
+        "OperatingCF,InvestingCF,FinancingCF,FreeCashFlow,OperatingCashFlowMargin,BuybackAmount," +
+        "DividendGrowth1Y,DividendGrowth3Y,DividendGrowth5Y,DividendGrowth10Y," +
+        "StockPriceChange3M,AverageStockPriceChange3M,AveragePrice3M,PriceChange3M,PriceChangeAverage3M," +
+        "BenefitContent,BenefitValue,BenefitYield,TotalYield\n" +
+        "7203,10.5,1.1,12.3,250.4,3000,3.2,35.0,80,45.0,30.0,8.5,9.1,6.2,2.1,6.5,10.2,15.0," +
+        "1000000,-500000,200000,500000,12.5,300000,5.0,8.0,10.0,12.0,4.5,3.2,2800,5.0,4.1,QUOカード,1000,1.0,4.2\n";
+
+    [Fact]
+    public async Task ImportFullCsv_ValuesVisibleInDetailAndCompare()
+    {
+        var imp = await JsonOf(await _client.PostAsync("/api/import", new StringContent(FullCsv, Encoding.UTF8, "text/csv")));
+        Assert.Equal(1, imp.GetProperty("updated").GetInt32());
+
+        // 詳細(完全な Stock)に値が保持されている
+        var st = (await JsonOf(await _client.GetAsync("/api/stocks/7203"))).GetProperty("stock");
+        Assert.Equal(3000, st.GetProperty("BPS").GetDouble());
+        Assert.Equal(80, st.GetProperty("Dividend").GetDouble());
+        Assert.Equal(1000000, st.GetProperty("OperatingCF").GetDouble());
+        Assert.Equal(-500000, st.GetProperty("InvestingCF").GetDouble());
+        Assert.Equal(200000, st.GetProperty("FinancingCF").GetDouble());
+        Assert.Equal(15.0, st.GetProperty("RevenueGrowth10Y").GetDouble());
+        Assert.Equal(12.0, st.GetProperty("DividendGrowth10Y").GetDouble());
+        Assert.Equal(300000, st.GetProperty("BuybackAmount").GetDouble());
+        Assert.Equal(2800, st.GetProperty("AveragePrice3M").GetDouble());
+        Assert.Equal(4.1, st.GetProperty("PriceChangeAverage3M").GetDouble());
+        Assert.Equal("QUOカード", st.GetProperty("BenefitContent").GetString());
+        Assert.Equal(1000, st.GetProperty("BenefitValue").GetDouble());
+        Assert.True(st.GetProperty("HasShareholderBenefit").GetBoolean()); // 優待列取込で有効
+        Assert.False(st.GetProperty("BenefitUnknown").GetBoolean());       // CSV取込済み
+
+        // 比較(StockSummaryDto)にも追加指標が含まれ、値が出る
+        var cmp = await JsonOf(await _client.GetAsync("/api/compare?codes=7203"));
+        var c = cmp[0];
+        Assert.Equal(3000, c.GetProperty("BPS").GetDouble());
+        Assert.Equal(1000000, c.GetProperty("OperatingCF").GetDouble());
+        Assert.Equal("QUOカード", c.GetProperty("BenefitContent").GetString());
+        Assert.Equal(1000, c.GetProperty("BenefitValue").GetDouble());
+        Assert.Equal(15.0, c.GetProperty("RevenueGrowth10Y").GetDouble());
+    }
+
+    [Fact]
+    public async Task ScreenJson_ContainsExtendedIndicatorFields()
+    {
+        var j = await JsonOf(await _client.PostAsJsonAsync("/api/screen", new { }));
+        var first = j.GetProperty("stocks")[0];
+        // 追加した指標プロパティが JSON に存在する(値の有無に関わらずフィールドがある)
+        foreach (var prop in new[] { "BPS", "Dividend", "OperatingCF", "InvestingCF", "FinancingCF",
+            "RevenueGrowth10Y", "DividendGrowth10Y", "BuybackAmount", "BenefitContent", "BenefitValue",
+            "AveragePrice3M", "PriceChangeAverage3M", "OrdinaryProfitMargin", "Description", "IRUrl" })
+            Assert.True(first.TryGetProperty(prop, out _), $"{prop} が screen レスポンスに無い");
+    }
+
     [Fact]
     public async Task SaveUserData_RecalculatesScore()
     {
