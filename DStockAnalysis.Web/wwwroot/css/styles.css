@@ -168,6 +168,15 @@ table.grid tbody tr { cursor: pointer; }
 .charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
 .chart h4 { margin: 0 0 4px; font-size: 12px; color: var(--sub); }
 
+/* 個別分析: カテゴリ別 指標テーブル */
+.detail-tables { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; margin: 10px 0; align-items: start; }
+.detail-tables .box { margin: 0; }
+table.kv { width: 100%; border-collapse: collapse; font-size: 12px; }
+table.kv th { text-align: left; color: var(--sub); font-weight: 500; padding: 4px 8px; white-space: nowrap; width: 48%; vertical-align: top; }
+table.kv td { text-align: right; padding: 4px 8px; font-variant-numeric: tabular-nums; vertical-align: top; word-break: break-word; }
+table.kv tr:nth-child(even) td, table.kv tr:nth-child(even) th { background: #20262d; }
+table.kv td a { color: var(--ok-solid); word-break: break-all; }
+
 .buffett-item { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
 .buffett-item span { flex: 1; font-size: 12px; }
 .buffett-item select { background: var(--card); color: var(--text); border: 1px solid var(--grid);

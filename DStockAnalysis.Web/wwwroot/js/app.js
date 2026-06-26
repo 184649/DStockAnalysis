@@ -67,12 +67,15 @@ function esc(s) { return (s == null ? "" : String(s)).replace(/[&<>"]/g, c => ({
 
 // ===== スクリーニング表のカラム定義(カテゴリ順) =====
 const COLS = [
+  // 基本情報
   { k: "Code", label: "コード", kind: "id" },
   { k: "Name", label: "銘柄名", kind: "name" },
   { k: "Market", label: "市場", kind: "text" },
   { k: "Sector", label: "業種", kind: "text" },
   { k: "Scale", label: "規模", kind: "text" },
   { k: "Theme", label: "テーマ", kind: "text" },
+  { k: "FiscalMonth", label: "決算月", kind: "text" },
+  // バリュエーション
   { k: "Price", label: "株価", kind: "comma" },
   { k: "MarketCap", label: "時価総額(百万)", kind: "comma" },
   { k: "PER", label: "PER", kind: "num", m: "per", d: 1 },
@@ -80,25 +83,60 @@ const COLS = [
   { k: "MixFactor", label: "MIX", kind: "num", m: "mix", d: 1 },
   { k: "ROE", label: "ROE%", kind: "num", m: "roe", d: 1 },
   { k: "EPS", label: "EPS", kind: "num", d: 1 },
+  { k: "BPS", label: "BPS", kind: "comma" },
+  { k: "OperatingMargin", label: "営業利益率%", kind: "num", m: "margin", d: 1 },
+  { k: "OrdinaryProfitMargin", label: "経常利益率%", kind: "num", m: "margin", d: 1 },
+  { k: "NetProfitMargin", label: "純利益率%", kind: "num", m: "margin", d: 1 },
+  // 配当・株主還元
   { k: "DividendYield", label: "配当利回%", kind: "num", m: "dy", d: 2 },
   { k: "PayoutRatio", label: "配当性向%", kind: "num", m: "payout", d: 1 },
-  { k: "ConsecutiveDividendYears", label: "連続増配", kind: "num", d: 0 },
+  { k: "Dividend", label: "1株配当", kind: "num", d: 1 },
+  { k: "DividendTrend", label: "配当傾向", kind: "text" },
   { k: "CumulativeDividend", label: "累進", kind: "flag" },
   { k: "DoeAdopted", label: "DOE", kind: "flag" },
+  { k: "ConsecutiveDividendYears", label: "連続増配", kind: "num", d: 0 },
+  { k: "DividendCutCount", label: "減配回数", kind: "num", d: 0 },
+  { k: "NonDividendCutYears", label: "非減配年", kind: "num", d: 0 },
+  { k: "DividendRemainingYears", label: "配当残年", kind: "num", d: 1 },
+  { k: "BuybackAmount", label: "自社株買(百万)", kind: "comma" },
+  { k: "ShareholderReturnPolicy", label: "還元方針", kind: "text" },
+  { k: "DividendGrowth1Y", label: "増配1Y%", kind: "num", m: "growth", d: 1 },
+  { k: "DividendGrowth3Y", label: "増配3Y%", kind: "num", m: "growth", d: 1 },
+  { k: "DividendGrowth5Y", label: "増配5Y%", kind: "num", m: "growth", d: 1 },
+  { k: "DividendGrowth10Y", label: "増配10Y%", kind: "num", m: "growth", d: 1 },
+  // 株主優待
   { k: "HasShareholderBenefit", label: "優待", kind: "flag" },
-  { k: "BenefitCategory", label: "優待内容", kind: "text" },
+  { k: "BenefitCategory", label: "優待カテゴリ", kind: "text" },
+  { k: "BenefitContent", label: "優待内容", kind: "text" },
+  { k: "BenefitRightsMonth", label: "権利月", kind: "text" },
+  { k: "RequiredSharesForBenefit", label: "必要株数", kind: "comma" },
+  { k: "BenefitValue", label: "優待価値(円)", kind: "comma" },
   { k: "BenefitYield", label: "優待利回%", kind: "num", m: "benefityield", d: 2 },
   { k: "TotalYield", label: "総合利回%", kind: "num", m: "totalyield", d: 2 },
   { k: "HasLongTermBenefit", label: "長期優待", kind: "flaglong" },
+  // 財務
   { k: "EquityRatio", label: "自己資本%", kind: "num", m: "equity", d: 1 },
   { k: "InterestBearingDebtRatio", label: "有利子負債%", kind: "num", m: "debt", d: 1 },
-  { k: "OperatingMargin", label: "営業利益率%", kind: "num", m: "margin", d: 1 },
-  { k: "NetProfitMargin", label: "純利益率%", kind: "num", m: "margin", d: 1 },
-  { k: "OperatingCashFlowMargin", label: "営業CF率%", kind: "num", m: "cfmargin", d: 1 },
-  { k: "RevenueGrowth3Y", label: "増収率3Y%", kind: "num", m: "growth", d: 1 },
+  // 成長性
+  { k: "RevenueGrowth1Y", label: "増収1Y%", kind: "num", m: "growth", d: 1 },
+  { k: "RevenueGrowth3Y", label: "増収3Y%", kind: "num", m: "growth", d: 1 },
+  { k: "RevenueGrowth5Y", label: "増収5Y%", kind: "num", m: "growth", d: 1 },
+  { k: "RevenueGrowth10Y", label: "増収10Y%", kind: "num", m: "growth", d: 1 },
   { k: "OperatingProfitGrowthRate", label: "営利成長%", kind: "num", m: "growth", d: 1 },
-  { k: "FreeCashFlow", label: "FCF", kind: "cfcomma", m: "cf" },
+  { k: "OrdinaryProfitGrowthRate", label: "経常成長%", kind: "num", m: "growth", d: 1 },
+  { k: "NetProfitGrowthRate", label: "純利成長%", kind: "num", m: "growth", d: 1 },
+  { k: "EpsGrowthRate", label: "EPS成長%", kind: "num", m: "growth", d: 1 },
+  // キャッシュフロー
+  { k: "OperatingCF", label: "営業CF(百万)", kind: "cfcomma", m: "cf" },
+  { k: "InvestingCF", label: "投資CF(百万)", kind: "comma" },
+  { k: "FinancingCF", label: "財務CF(百万)", kind: "comma" },
+  { k: "FreeCashFlow", label: "FCF(百万)", kind: "cfcomma", m: "cf" },
+  { k: "OperatingCashFlowMargin", label: "営業CF率%", kind: "num", m: "cfmargin", d: 1 },
+  // 株価変化
   { k: "StockPriceChange3M", label: "3M変化%", kind: "num", m: "change", d: 1 },
+  { k: "AverageStockPriceChange3M", label: "3M平均変化%", kind: "num", m: "change", d: 1 },
+  { k: "AveragePrice3M", label: "3M平均株価", kind: "comma" },
+  // スコア
   { k: "SafetyScore", label: "安全性", kind: "score" },
   { k: "GrowthScore", label: "成長性", kind: "score" },
   { k: "ProfitabilityScore", label: "収益性", kind: "score" },
@@ -121,9 +159,12 @@ function cell(col, s) {
   switch (col.kind) {
     case "id": return `<td class="sticky">${esc(v)}${unf ? ' <span class="flag-off" title="実データ未取得">未</span>' : ""}</td>`;
     case "name": return `<td class="sticky2">${esc(v)}</td>`;
-    case "text":
-      if (unf && col.k === "Theme") return `<td></td>`;
-      return `<td>${esc(v)}</td>`;
+    case "text": {
+      // 基本情報(市場/業種/規模)は常に表示。その他のテキスト指標は未取得/空欄なら「-」。
+      const basic = (col.k === "Market" || col.k === "Sector" || col.k === "Scale");
+      if (!basic && unf) return `<td>-</td>`;
+      return `<td>${v ? esc(v) : "-"}</td>`;
+    }
   }
   if (unf) { // 指標未取得は色なしの「-」
     if (col.kind === "flag" || col.kind === "flaglong") return `<td><span class="flag-off">-</span></td>`;
@@ -384,10 +425,113 @@ function metricCard(label, v, suffix = "") {
   return `<div class="card"><div class="k">${label}</div><div class="v">${disp}</div></div>`;
 }
 
+// ===== 個別分析: 全指標をカテゴリ別テーブルで表示 =====
+// 値の表示: テキスト/日付/URLは常に、数値・真偽は未取得(fetched=false)なら「-」、
+// 取得済みでも 0/null/空 は「-」(出典の無い項目)。
+function dval(s, fetched, k, type) {
+  const v = s[k];
+  if (type === "text") return (v == null || v === "") ? "-" : esc(v);
+  if (type === "url") return v ? `<a href="${esc(v)}" target="_blank" rel="noopener">${esc(v)}</a>` : "-";
+  if (type === "date") return v ? new Date(v).toLocaleDateString("ja-JP") : "-";
+  if (type === "bool") return fetched ? (v ? "あり" : "なし") : "-";
+  if (!fetched) return "-";
+  const n = Number(v);
+  if (v == null || isNaN(n) || n === 0) return "-";
+  switch (type) {
+    case "pct1": return fnum(n, 1) + "%";
+    case "pct2": return fnum(n, 2) + "%";
+    case "num1": return fnum(n, 1);
+    case "num2": return fnum(n, 2);
+    case "int": return fnum(n, 0);
+    case "money": return fcomma(n);
+    default: return fnum(n, 2);
+  }
+}
+
+function catTable(s, fetched, rows) {
+  const body = rows.map(([k, label, type]) =>
+    `<tr><th>${label}</th><td>${dval(s, fetched, k, type)}</td></tr>`).join("");
+  return `<table class="kv">${body}</table>`;
+}
+
+// カテゴリ定義(Stock.cs の指標を網羅)
+const CAT_VALUATION = [
+  ["Price", "株価(円)", "money"], ["MarketCap", "時価総額(百万円)", "money"],
+  ["PER", "PER(倍)", "num2"], ["PBR", "PBR(倍)", "num2"], ["MixFactor", "MIX係数", "num1"],
+  ["ROE", "ROE", "pct1"], ["EPS", "EPS(円)", "num1"], ["BPS", "BPS(円)", "money"],
+  ["OperatingMargin", "営業利益率", "pct1"], ["OrdinaryProfitMargin", "経常利益率", "pct1"], ["NetProfitMargin", "純利益率", "pct1"],
+];
+const CAT_DIVIDEND = [
+  ["DividendYield", "配当利回り", "pct2"], ["PayoutRatio", "配当性向", "pct1"], ["Dividend", "1株配当(円)", "num1"],
+  ["DividendTrend", "配当傾向", "text"], ["CumulativeDividend", "累進配当", "bool"], ["DoeAdopted", "DOE採用", "bool"],
+  ["ConsecutiveDividendYears", "連続増配年数", "int"], ["DividendCutCount", "減配回数", "int"],
+  ["NonDividendCutYears", "非減配年数", "int"], ["DividendRemainingYears", "配当金残年数", "num1"],
+  ["BuybackAmount", "自社株買い(百万円)", "money"], ["ShareholderReturnPolicy", "還元方針", "text"],
+  ["DividendGrowth1Y", "増配率1Y", "pct1"], ["DividendGrowth3Y", "増配率3Y", "pct1"],
+  ["DividendGrowth5Y", "増配率5Y", "pct1"], ["DividendGrowth10Y", "増配率10Y", "pct1"],
+];
+const CAT_BENEFIT = [
+  ["HasShareholderBenefit", "株主優待", "bool"], ["ShareholderBenefit", "優待(短縮)", "text"],
+  ["BenefitContent", "優待内容", "text"], ["BenefitCategory", "優待カテゴリ", "text"],
+  ["BenefitRightsMonth", "権利確定月", "text"], ["RequiredSharesForBenefit", "必要株数", "int"],
+  ["BenefitValue", "優待価値(円)", "money"], ["BenefitYield", "優待利回り", "pct2"], ["TotalYield", "総合利回り", "pct2"],
+  ["HasLongTermBenefit", "長期保有優遇", "bool"], ["LongTermBenefitCondition", "長期保有条件", "text"],
+  ["LongTermBenefitContent", "長期保有優遇内容", "text"], ["BenefitRiskMemo", "廃止リスクメモ", "text"],
+];
+const CAT_FINANCE = [
+  ["EquityRatio", "自己資本比率", "pct1"], ["InterestBearingDebtRatio", "有利子負債比率", "pct1"],
+];
+const CAT_GROWTH = [
+  ["RevenueGrowth1Y", "増収率1Y", "pct1"], ["RevenueGrowth3Y", "増収率3Y", "pct1"],
+  ["RevenueGrowth5Y", "増収率5Y", "pct1"], ["RevenueGrowth10Y", "増収率10Y", "pct1"],
+  ["RevenueGrowthRate", "売上高成長率", "pct1"], ["AverageRevenueGrowth3Y", "平均増収率3Y", "pct1"],
+  ["OperatingProfitGrowthRate", "営業利益成長率", "pct1"], ["OrdinaryProfitGrowthRate", "経常利益成長率", "pct1"],
+  ["NetProfitGrowthRate", "純利益成長率", "pct1"], ["EpsGrowthRate", "EPS成長率", "pct1"],
+];
+const CAT_CF = [
+  ["OperatingCF", "営業CF(百万円)", "money"], ["InvestingCF", "投資CF(百万円)", "money"],
+  ["FinancingCF", "財務CF(百万円)", "money"], ["FreeCashFlow", "フリーCF(百万円)", "money"],
+  ["OperatingCashFlowMargin", "営業CFマージン", "pct1"],
+];
+const CAT_PRICECHG = [
+  ["StockPriceChange3M", "3ヶ月株価変化率", "pct1"], ["AverageStockPriceChange3M", "3ヶ月平均株価変化率", "pct1"],
+  ["AveragePrice3M", "3ヶ月平均株価(円)", "money"], ["PriceChange3M", "株価変化率(別系列)", "pct1"],
+  ["PriceChangeAverage3M", "平均株価変化率(別系列)", "pct1"],
+];
+const CAT_SCORES = [
+  ["SafetyScore", "安全性", "int"], ["GrowthScore", "成長性", "int"], ["ProfitabilityScore", "収益性", "int"],
+  ["ReturnScore", "還元性", "int"], ["EfficiencyScore", "効率性", "int"], ["ValuationScore", "割安性", "int"],
+  ["LongTermScore", "長期適性", "int"], ["RevaluationScore", "再評価期待", "int"], ["BuffettScore", "バフェット", "int"],
+  ["WantToBuyScore", "買いたい度", "int"], ["OverallScore", "総合評価", "int"], ["OverallGrade", "総合グレード", "text"],
+  ["JudgementText", "総合判定", "text"], ["UserInterest", "興味度", "int"],
+];
+
 function renderDetail() {
   const s = state.selected;
   const el = document.getElementById("analysisDetail");
   const links = (state.links || []).map(l => `<a href="${esc(l.Url)}" target="_blank" rel="noopener">${esc(l.Name)}</a>`).join("");
+  const F = s.IndicatorsFetched;
+  const basicRows = [
+    ["Market", "市場", "text"], ["Sector", "業種", "text"], ["Scale", "規模", "text"],
+    ["Theme", "テーマ", "text"], ["FiscalMonth", "決算月", "text"], ["DataUpdated", "データ更新日", "date"],
+    ["Description", "企業概要", "text"], ["IRUrl", "IRリンク", "url"],
+  ];
+  const benefitHtml = s.BenefitUnknown
+    ? `<div class="desc">株主優待は自動取得の対象外です。<b>未取得</b>(CSV取込で反映されます)。</div>` +
+      catTable(s, F, [["DividendYield", "配当利回り", "pct2"], ["TotalYield", "総合利回り", "pct2"]])
+    : catTable(s, F, CAT_BENEFIT);
+  const catBlock = `
+    <div class="detail-tables">
+      <div class="box"><h3>基本情報</h3>${catTable(s, true, basicRows)}</div>
+      <div class="box"><h3>バリュエーション</h3>${catTable(s, F, CAT_VALUATION)}</div>
+      <div class="box"><h3>配当・株主還元</h3>${catTable(s, F, CAT_DIVIDEND)}</div>
+      <div class="box"><h3>株主優待</h3>${benefitHtml}</div>
+      <div class="box"><h3>財務</h3>${catTable(s, F, CAT_FINANCE)}</div>
+      <div class="box"><h3>成長性</h3>${catTable(s, F, CAT_GROWTH)}</div>
+      <div class="box"><h3>キャッシュフロー</h3>${catTable(s, F, CAT_CF)}</div>
+      <div class="box"><h3>株価変化</h3>${catTable(s, F, CAT_PRICECHG)}</div>
+      <div class="box"><h3>スコア</h3>${catTable(s, F, CAT_SCORES)}</div>
+    </div>`;
   el.innerHTML = `
     <div class="head">
       <span class="name">${esc(s.Name)}</span><span class="code">${esc(s.Code)}</span>
@@ -422,6 +566,8 @@ function renderDetail() {
       ${scoreCard("買いたい度", s.WantToBuyScore)}
     </div>
 
+    ${catBlock}
+
     <div class="panel-row">
       <div class="box grow">
         <h3>スコアレーダー</h3>
@@ -446,22 +592,6 @@ function renderDetail() {
         ${barChart("キャッシュフロー", s.History, [["OperatingCF", "営業CF", "#29B6F6"], ["InvestingCF", "投資CF", "#FFA726"], ["FinancingCF", "財務CF", "#AB47BC"], ["FreeCF", "FCF", "#43A047"]])}
         ${barChart("自社株買い", s.History, [["BuybackAmount", "取得額", "#26A69A"]])}
       </div>
-    </div>
-
-    <div class="box">
-      <h3>株主優待・株主還元</h3>
-      ${s.BenefitUnknown
-        ? `<div class="desc">株主優待情報は自動取得の対象外です(未取得)。実データは <b>CSV取込</b> で反映してください。</div>
-           <div class="cards">${metricCard("配当利回り", s.DividendYield, "%")}${metricCard("総合利回り", s.TotalYield, "%")}</div>`
-        : `<div class="cards">
-        ${metricCard("優待", s.HasShareholderBenefit ? "あり" : "なし")}
-        ${metricCard("優待内容", s.BenefitContent || "-")}
-        ${metricCard("優待利回り", s.BenefitYield, "%")}
-        ${metricCard("総合利回り", s.TotalYield, "%")}
-        ${metricCard("長期保有優遇", s.HasLongTermBenefit ? "あり" : "なし")}
-        ${metricCard("権利確定月", s.BenefitRightsMonth || "-")}
-      </div>
-      ${s.BenefitRiskMemo ? `<div class="desc">廃止リスク: ${esc(s.BenefitRiskMemo)}</div>` : ""}`}
     </div>
 
     <div class="box">
@@ -572,16 +702,45 @@ function addToCompare(code) {
 }
 function removeCompare(code) { state.compare = state.compare.filter(c => c !== code); renderCompare(); }
 
+// [キー, ラベル, 書式, 色メトリック?]
 const CMP_ROWS = [
-  ["Price", "株価", "comma"], ["MarketCap", "時価総額(百万)", "comma"], ["PER", "PER", "per"],
-  ["PBR", "PBR", "pbr"], ["ROE", "ROE%", "roe"], ["DividendYield", "配当利回り%", "dy"],
-  ["PayoutRatio", "配当性向%", "payout"], ["TotalYield", "総合利回り%", "totalyield"],
-  ["EquityRatio", "自己資本比率%", "equity"], ["OperatingMargin", "営業利益率%", "margin"],
-  ["RevenueGrowth3Y", "増収率3Y%", "growth"], ["FreeCashFlow", "FCF", "cf"],
-  ["SafetyScore", "安全性", "score"], ["GrowthScore", "成長性", "score"],
-  ["ProfitabilityScore", "収益性", "score"], ["ReturnScore", "還元性", "score"],
-  ["BuffettScore", "バフェット", "buffett"], ["OverallScore", "総合", "score"],
+  ["Price", "株価(円)", "comma"], ["MarketCap", "時価総額(百万)", "comma"],
+  ["PER", "PER", "num2", "per"], ["PBR", "PBR", "num2", "pbr"], ["MixFactor", "MIX係数", "num1", "mix"],
+  ["ROE", "ROE%", "pct1", "roe"], ["EPS", "EPS(円)", "num1"], ["BPS", "BPS(円)", "comma"],
+  ["DividendYield", "配当利回り%", "pct2", "dy"], ["PayoutRatio", "配当性向%", "pct1", "payout"],
+  ["Dividend", "1株配当(円)", "num1"], ["TotalYield", "総合利回り%", "pct2", "totalyield"],
+  ["EquityRatio", "自己資本比率%", "pct1", "equity"], ["InterestBearingDebtRatio", "有利子負債比率%", "pct1", "debt"],
+  ["OperatingMargin", "営業利益率%", "pct1", "margin"], ["OrdinaryProfitMargin", "経常利益率%", "pct1", "margin"],
+  ["NetProfitMargin", "純利益率%", "pct1", "margin"],
+  ["RevenueGrowth1Y", "増収率1Y%", "pct1", "growth"], ["RevenueGrowth3Y", "増収率3Y%", "pct1", "growth"],
+  ["RevenueGrowth5Y", "増収率5Y%", "pct1", "growth"], ["RevenueGrowth10Y", "増収率10Y%", "pct1", "growth"],
+  ["OperatingProfitGrowthRate", "営業利益成長率%", "pct1", "growth"], ["OrdinaryProfitGrowthRate", "経常利益成長率%", "pct1", "growth"],
+  ["NetProfitGrowthRate", "純利益成長率%", "pct1", "growth"], ["EpsGrowthRate", "EPS成長率%", "pct1", "growth"],
+  ["OperatingCF", "営業CF(百万)", "comma", "cf"], ["InvestingCF", "投資CF(百万)", "comma"],
+  ["FinancingCF", "財務CF(百万)", "comma"], ["FreeCashFlow", "フリーCF(百万)", "comma", "cf"],
+  ["OperatingCashFlowMargin", "営業CFマージン%", "pct1", "cfmargin"],
+  ["StockPriceChange3M", "3M株価変化%", "pct1", "change"], ["AverageStockPriceChange3M", "3M平均変化%", "pct1", "change"],
+  ["SafetyScore", "安全性", "int", "score"], ["GrowthScore", "成長性", "int", "score"],
+  ["ProfitabilityScore", "収益性", "int", "score"], ["ReturnScore", "還元性", "int", "score"],
+  ["EfficiencyScore", "効率性", "int", "score"], ["ValuationScore", "割安性", "int", "score"],
+  ["LongTermScore", "長期適性", "int", "score"], ["RevaluationScore", "再評価", "int", "score"],
+  ["BuffettScore", "バフェット", "int", "buffett"], ["WantToBuyScore", "買いたい度", "int", "score"],
+  ["OverallScore", "総合", "int", "score"],
 ];
+
+function cmpVal(s, k, fmt) {
+  if (!s.IndicatorsFetched) return "-";
+  const v = s[k]; const n = Number(v);
+  if (v == null || isNaN(n) || n === 0) return "-";
+  switch (fmt) {
+    case "comma": return fcomma(n);
+    case "int": return fnum(n, 0);
+    case "pct1": return fnum(n, 1) + "%";
+    case "pct2": return fnum(n, 2) + "%";
+    case "num1": return fnum(n, 1);
+    default: return fnum(n, 2);
+  }
+}
 
 async function renderCompare() {
   const chips = document.getElementById("compareChips");
@@ -593,12 +752,11 @@ async function renderCompare() {
   if (state.compare.length === 0) { body.innerHTML = `<div class="empty">左の一覧から銘柄を選んで比較に追加してください(最大6件)。</div>`; return; }
   const stocks = await API.compare(state.compare);
   let html = "<table class='cmp'><thead><tr><th>指標</th>" + stocks.map(s => `<th>${esc(s.Name)}<br><span style="color:var(--sub)">${esc(s.Code)}</span></th>`).join("") + "</tr></thead><tbody>";
-  for (const [k, label, m] of CMP_ROWS) {
+  for (const [k, label, fmt, m] of CMP_ROWS) {
     html += `<tr><th>${label}</th>` + stocks.map(s => {
       const v = s[k];
-      const cls = m === "comma" ? "" : qClass(m, v);
-      const text = (m === "comma" || k === "FreeCashFlow") ? fcomma(v) : (m === "score" || m === "buffett") ? fnum(v, 0) : fnum(v, 2);
-      return `<td class="${cls}">${text}</td>`;
+      const cls = (m && s.IndicatorsFetched && v != null && Number(v) !== 0) ? qClass(m, v) : "";
+      return `<td class="${cls}">${cmpVal(s, k, fmt)}</td>`;
     }).join("") + "</tr>";
   }
   html += "</tbody></table>";
