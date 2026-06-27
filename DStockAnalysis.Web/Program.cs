@@ -166,6 +166,13 @@ app.MapPost("/api/admin/price-refresh", async (PriceRefreshHostedService svc, Ca
     return Results.Ok(new { refreshed = n });
 });
 
+// ===== 財務指標の概算一括取得(Yahoo)。一覧に ROE/ROA/利益率/CF/成長率/スコアを素早く埋める =====
+app.MapPost("/api/admin/enrich", async (int? max, PriceRefreshHostedService svc, CancellationToken ct) =>
+{
+    int n = await svc.EnrichFundamentalsAsync(max ?? int.MaxValue, ct);
+    return Results.Ok(new { enriched = n });
+});
+
 // ===== 自動取得: 任意銘柄を即時取得(手動トリガー) =====
 app.MapPost("/api/admin/fetch/run", async (string? codes, bool? force,
     IndicatorFetchHostedService svc, CancellationToken ct) =>

@@ -13,24 +13,27 @@ public class YahooFinanceClientTests
         ""price"":{""regularMarketPrice"":{""raw"":2706.0},""marketCap"":{""raw"":32041888382976}},
         ""summaryDetail"":{""trailingPE"":{""raw"":9.1648},""dividendYield"":{""raw"":0.0365},""payoutRatio"":{""raw"":0.3218},""trailingAnnualDividendRate"":{""raw"":95.0}},
         ""defaultKeyStatistics"":{""priceToBook"":{""raw"":0.8835},""trailingEps"":{""raw"":295.26},""bookValue"":{""raw"":3062.816}},
-        ""financialData"":{""returnOnEquity"":{""raw"":0.10233},""profitMargins"":{""raw"":0.07592},""revenueGrowth"":{""raw"":0.019},""earningsGrowth"":{""raw"":0.232},""debtToEquity"":{""raw"":107.061},""operatingCashflow"":{""raw"":5472919748608},""freeCashflow"":{""raw"":-1204836106240},""totalRevenue"":{""raw"":50684951003136}}
+        ""financialData"":{""returnOnEquity"":{""raw"":0.10233},""returnOnAssets"":{""raw"":0.0531},""operatingMargins"":{""raw"":0.1234},""profitMargins"":{""raw"":0.07592},""revenueGrowth"":{""raw"":0.019},""earningsGrowth"":{""raw"":0.232},""debtToEquity"":{""raw"":107.061},""operatingCashflow"":{""raw"":5472919748608},""freeCashflow"":{""raw"":-1204836106240},""totalRevenue"":{""raw"":50684951003136}}
     }],""error"":null}}";
 
     [Fact]
-    public void ParseQuoteSummary_ExtractsFinancialExtrasOnly()
+    public void ParseQuoteSummary_ExtractsFinancialFundamentals()
     {
-        // Yahoo からは収益性・財務・CF のみ採用。バリュエーション(PER/PBR/利回り/EPS)は株探(会社予想)を使う。
+        // Yahoo からは収益性・財務・CF・成長性(概算)を採用。バリュエーション(PER/PBR/利回り/EPS)は株探(会社予想)を使う。
         var d = YahooFinanceClient.ParseQuoteSummary(Sample);
         Assert.Equal("2706", d["Price"]);          // 株探不通時の予備として保持
         Assert.Equal("10.23", d["ROE"]);           // 0.10233 → %
+        Assert.Equal("5.31", d["ROA"]);            // 0.0531 → %
+        Assert.Equal("12.34", d["OperatingMargin"]);// 0.1234 → %
         Assert.Equal("7.59", d["NetProfitMargin"]);// 0.07592 → %
         Assert.Equal("107.06", d["InterestBearingDebtRatio"]);
+        Assert.Equal("1.9", d["RevenueGrowthRate"]);   // 0.019 → %
+        Assert.Equal("23.2", d["NetProfitGrowthRate"]);// 0.232 → %
         Assert.Equal("5472920", d["OperatingCF"]); // 円→百万円
         Assert.Equal("-1204836", d["FreeCashFlow"]);
         Assert.Equal("10.8", d["OperatingCashFlowMargin"]); // opCF/revenue
-        // バリュエーション系・成長率・時価総額・営業利益率は Yahoo から採らない
-        foreach (var k in new[] { "PER", "PBR", "EPS", "BPS", "DividendYield", "PayoutRatio",
-                                  "Dividend", "RevenueGrowthRate", "NetProfitGrowthRate", "MarketCap", "OperatingMargin" })
+        // バリュエーション系・時価総額は Yahoo から採らない(会社予想=株探を使う)
+        foreach (var k in new[] { "PER", "PBR", "EPS", "BPS", "DividendYield", "PayoutRatio", "Dividend", "MarketCap" })
             Assert.False(d.ContainsKey(k), $"{k} は Yahoo から採用しない");
     }
 
