@@ -113,9 +113,9 @@ table.grid th { background: #1d2329; position: sticky; top: 0; z-index: 2; color
 table.grid th:hover { color: var(--text); background: #232b33; }
 table.grid th .arrow { color: var(--accent); margin-left: 3px; font-size: 10px; }
 table.grid td.num { text-align: right; font-variant-numeric: tabular-nums; }
-/* 偶数行の薄いゼブラ(可読性) */
-table.grid tbody tr:nth-child(even) td { background: #20262d; }
-table.grid tbody tr:nth-child(even) td.sticky, table.grid tbody tr:nth-child(even) td.sticky2 { background: #20262d; }
+/* 偶数行の薄いゼブラ(可読性)。仮想化のため nth-child ではなく絶対index由来のクラスで指定。 */
+table.grid tbody tr.zeb td { background: #20262d; }
+table.grid tbody tr.zeb td.sticky, table.grid tbody tr.zeb td.sticky2 { background: #20262d; }
 table.grid td.sticky, table.grid th.sticky { position: sticky; left: 0; background: #1b2026; z-index: 1; }
 table.grid th.sticky { z-index: 3; }
 table.grid td.sticky2, table.grid th.sticky2 { position: sticky; left: 64px; background: #1b2026; z-index: 1; }

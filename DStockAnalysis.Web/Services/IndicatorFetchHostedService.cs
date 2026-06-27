@@ -21,6 +21,9 @@ public class FetchOptions
     public double CycleRestHours { get; set; } = 24;
     /// <summary>株探も取得対象に含めるか。</summary>
     public bool UseKabutan { get; set; } = false;
+    /// <summary>巡回取得の同時並行数(全銘柄の取得を高速化。1=逐次)。各銘柄は複数ソースを並行取得するため、
+    /// 大きすぎると対象サイトへの負荷が高い。既定4。</summary>
+    public int Concurrency { get; set; } = 4;
 }
 
 /// <summary>自動取得の進捗・状態(API で参照)。</summary>
@@ -121,28 +124,33 @@ public class IndicatorFetchHostedService : BackgroundService
 
         try
         {
+            // 同時並行で取得して全銘柄の取得を高速化(各銘柄は内部で複数ソースを並行取得)。
+            using var sem = new SemaphoreSlim(Math.Max(1, _opt.Concurrency));
             int sinceSave = 0;
-            foreach (var code in codes)
+            var tasks = codes.Select(async code =>
             {
-                ct.ThrowIfCancellationRequested();
-                lock (_statusLock) _status.CurrentCode = code;
-
+                if (ct.IsCancellationRequested) return;
                 if (!force && _coordinator.IsFresh(code))
                 {
                     lock (_statusLock) { _status.Skipped++; _status.Processed++; }
-                    continue;
+                    return;
                 }
-
-                // 取得ごとに全銘柄を保存すると重いので、まとめて間引き保存する(save:false)
-                bool updated = await _coordinator.FetchOneAsync(code, force, ct, save: false);
-                lock (_statusLock) { if (updated) _status.Updated++; _status.Processed++; }
-                if (updated && ++sinceSave >= 25) { _store.Persist(); sinceSave = 0; }
-
-                // robots の Crawl-delay と基準間隔の大きい方を採用
-                var cd = await _fetcher.GetCrawlDelayAsync($"https://irbank.net/{code}", ct) ?? 0;
-                var wait = Math.Max(_opt.DelaySeconds, cd);
-                await DelaySafe(TimeSpan.FromSeconds(wait), ct);
-            }
+                await sem.WaitAsync(ct);
+                try
+                {
+                    lock (_statusLock) _status.CurrentCode = code;
+                    bool updated = await _coordinator.FetchOneAsync(code, force, ct, save: false);
+                    lock (_statusLock) { if (updated) _status.Updated++; _status.Processed++; }
+                    if (updated && Interlocked.Increment(ref sinceSave) % 50 == 0) _store.Persist();
+                }
+                catch (Exception e) when (e is not OperationCanceledException)
+                {
+                    lock (_statusLock) _status.Processed++;
+                    _log.LogDebug("取得失敗 {Code}: {Msg}", code, e.Message);
+                }
+                finally { sem.Release(); }
+            });
+            await Task.WhenAll(tasks);
             _store.Persist(); // 巡回終了時にまとめて保存
             _log.LogInformation("自動取得が1巡完了: 更新 {Updated} / スキップ {Skipped}",
                 Snapshot().Updated, Snapshot().Skipped);
