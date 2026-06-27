@@ -160,12 +160,13 @@ public class ScoreService
     /// 優れた事業でも割高なら満点にはならず、資本効率の低い事業は割安でも中位に留まる。
     ///
     /// 配点(計100):
-    ///  1. 資本収益力 20  — ROA を主・ROE を従(自己資本比率が低い=借入で嵩上げした ROE は割引)。無借金の高ROAを高評価。
+    ///  1. 資本収益力 18  — ROA を主・ROE を従(自己資本比率が低い=借入で嵩上げした ROE は割引)。無借金の高ROAを高評価。
     ///  2. 利益率・モート 12 — 営業利益率・純利益率(価格決定力=堀)。薄利は減点するが致命傷にはしない。
-    ///  3. キャッシュ創出力 14 — 営業CF/フリーCFの黒字・営業CFマージン(オーナー利益)。
+    ///  3. キャッシュ創出力 13 — 営業CF/フリーCFの黒字・営業CFマージン(オーナー利益)。
     ///  4. 財務健全性 14 — 自己資本比率・有利子負債比率(低負債を高評価)。
     ///  5. 利益の継続・成長 8 — 増収率・純利益/EPS 成長率(高成長より着実さ)。
-    ///  6. 株主還元 or 再投資の質 12 — 高還元と「高ROAでの内部再投資(低配当でも)」の良い方で評価。
+    ///  6. 株主還元の信頼性 / 内部留保の質 15 — 連続増配・減配なしの実績(配当の継続性)＋性向の健全さ＋利回り＋自社株買い、
+    ///     または「高ROAでの内部再投資(無配でも)」の良い方で評価。CF赤字・過大性向は割引。
     ///  7. 割安性・安全余裕 14 — PER/PBR/MIX。質を犠牲にしない割安。経営不振(赤字/FCF赤字/債務超過寸前)時のみ割引。
     ///  8. 事業の理解・経営(定性) 6 — バフェットチェックの回答(理解/堀/経営の信頼/10年需要)。自動取得不可。
     ///
@@ -179,13 +180,13 @@ public class ScoreService
 
         var list = new List<BuffettComponent>();
 
-        // 1. 資本収益力 (20) — ROA を主、ROE を従(レバレッジで嵩上げした ROE は割引)。
+        // 1. 資本収益力 (18) — ROA を主、ROE を従(レバレッジで嵩上げした ROE は割引)。
         //    無借金で高 ROA(=高い実質的な資本効率)をバフェットは最も好む。
-        double roaCredit = Scale(s.ROA, 2, 12, 12);
+        double roaCredit = Scale(s.ROA, 2, 12, 11);
         double levFactor = s.EquityRatio > 0 && s.EquityRatio < 35 ? Math.Clamp(0.6 + 0.4 * s.EquityRatio / 35.0, 0.6, 1) : 1;
-        double roeCredit = Scale(s.ROE, 6, 18, 8) * levFactor;
-        double capital = Math.Clamp(roaCredit + roeCredit + Adj(b.StableHighRoe, 1, -1), 0, 20);
-        list.Add(new("capital", "資本収益力(ROA・ROE)", capital, 20,
+        double roeCredit = Scale(s.ROE, 6, 18, 7) * levFactor;
+        double capital = Math.Clamp(roaCredit + roeCredit + Adj(b.StableHighRoe, 1, -1), 0, 18);
+        list.Add(new("capital", "資本収益力(ROA・ROE)", capital, 18,
             $"ROA {Pct(s.ROA)} / ROE {Pct(s.ROE)}（レバレッジ調整×{levFactor:0.00}）。無借金の高ROAを高評価"));
 
         // 2. 利益率・モート (12) — 薄利は減点するが致命傷にはしない(商社等の薄利事業を過度に切らない)。
@@ -193,10 +194,10 @@ public class ScoreService
         list.Add(new("margins", "利益率・モート", margins, 12,
             $"営業利益率 {Pct(s.OperatingMargin)} / 純利益率 {Pct(s.NetProfitMargin)}。高い利益率は価格決定力(堀)の証拠"));
 
-        // 3. キャッシュ創出力 (14) — オーナー利益。バフェットが最重視する一つ。
-        double cash = Math.Clamp((s.OperatingCF > 0 ? 5 : 0) + (s.FreeCashFlow > 0 ? 5 : 0) + Scale(s.OperatingCashFlowMargin, 3, 22, 4)
-                      + Adj(b.StablePositiveOperatingCf, 0.5, 0) + Adj(b.StablePositiveFreeCf, 0.5, 0), 0, 14);
-        list.Add(new("cash", "キャッシュ創出力", cash, 14,
+        // 3. キャッシュ創出力 (13) — オーナー利益。バフェットが最重視する一つ。
+        double cash = Math.Clamp((s.OperatingCF > 0 ? 5 : 0) + (s.FreeCashFlow > 0 ? 4 : 0) + Scale(s.OperatingCashFlowMargin, 3, 22, 4)
+                      + Adj(b.StablePositiveOperatingCf, 0.5, 0) + Adj(b.StablePositiveFreeCf, 0.5, 0), 0, 13);
+        list.Add(new("cash", "キャッシュ創出力", cash, 13,
             $"営業CF {(s.OperatingCF > 0 ? "黒字" : "未取得/赤字")} / フリーCF {(s.FreeCashFlow > 0 ? "黒字" : "未取得/赤字")} / 営業CFマージン {Pct(s.OperatingCashFlowMargin)}"));
 
         // 4. 財務健全性 (14)
@@ -210,16 +211,23 @@ public class ScoreService
         list.Add(new("growth", "利益の継続・成長", g, 8,
             $"増収率 {Pct(s.RevenueGrowthRate != 0 ? s.RevenueGrowthRate : s.RevenueGrowth1Y)} / 純利益成長 {Pct(s.NetProfitGrowthRate)} / EPS成長 {Pct(s.EpsGrowthRate)}"));
 
-        // 6. 株主還元 or 再投資の質 (12) — 高還元と「高ROAで再投資」のどちらか良い方で評価。
-        //    バフェットは高ROICでの内部再投資(=低配当でも)を最も評価するため、低配当を一律に減点しない。
-        double shareholder = Scale(s.DividendYield, 0, 4, 6) + PayoutQuality(s.PayoutRatio) * 3
-                             + (s.BuybackAmount > 0 ? 2 : 0) + Scale(s.ConsecutiveDividendYears, 0, 20, 2) + (s.CumulativeDividend ? 1 : 0);
+        // 6. 株主還元の信頼性 / 内部留保の質 (15) — バフェットが重視する「継続性」を中心に評価。
+        //    連続増配・減配なしの実績(配当の信頼性)＋性向の健全さ＋利回り＋自社株買い、
+        //    または「高ROAでの内部再投資(無配でも)」の良い方で評価し、無配の優良企業を不当に減点しない。
+        double shareholder =
+              Scale(s.ConsecutiveDividendYears, 0, 12, 5)            // 連続増配の実績
+            + (s.DividendCutCount == 0 && s.DividendYield > 0 ? 2 : 0) // 過去に減配なし
+            + PayoutQuality(s.PayoutRatio) * 3                        // 配当性向の健全さ
+            + Scale(s.DividendYield, 0, 4, 3)                         // 配当利回り
+            + (s.BuybackAmount > 0 ? 1 : 0) + (s.CumulativeDividend ? 1 : 0);
+        if (s.DividendCutCount >= 2) shareholder -= 2;               // 過去に複数回の減配は信頼性減点
         double retention = s.PayoutRatio > 0 ? Math.Clamp((100 - s.PayoutRatio) / 100.0, 0, 1) : 0.6;
-        double reinvest = Scale(s.ROA, 4, 13, 8) * (0.5 + 0.5 * retention) + Scale(s.ROE, 10, 20, 4);
-        double ret = Math.Clamp(Math.Max(shareholder, reinvest) + Adj(b.SustainableReturn, 0, -1.5), 0, 12);
-        if (s.FreeCashFlow < 0 || s.PayoutRatio > 100) ret = Math.Min(ret, 6); // 無理な還元は頭打ち
-        list.Add(new("return", "株主還元/再投資の質", ret, 12,
-            $"配当利回り {Pct(s.DividendYield)} / 配当性向 {Pct(s.PayoutRatio)} / 自社株買い {(s.BuybackAmount > 0 ? "あり" : "なし")}。低配当でも高ROAでの再投資は評価"));
+        double reinvest = Scale(s.ROA, 4, 13, 10) * (0.5 + 0.5 * retention) + Scale(s.ROE, 10, 20, 5);
+        double ret = Math.Max(shareholder, reinvest) + Adj(b.SustainableReturn, 0, -1.5);
+        if (s.FreeCashFlow < 0 || s.PayoutRatio > 100) ret = Math.Min(ret, 7); // CF赤字/過大性向の還元は頭打ち
+        ret = Math.Clamp(ret, 0, 15);
+        list.Add(new("return", "株主還元の信頼性 / 内部留保の質", ret, 15,
+            $"連続増配 {s.ConsecutiveDividendYears}年 / 減配回数 {s.DividendCutCount} / 配当利回り {Pct(s.DividendYield)} / 性向 {Pct(s.PayoutRatio)}。継続性と無配でも高ROA再投資を評価"));
 
         // 7. 割安性・安全余裕 (14) — バフェットの主要因。質ゲートは「経営不振」(赤字/FCF赤字/債務超過寸前)のみに限定。
         double valRaw = ScaleInverse(s.PER, 8, 45, 6) + ScaleInverse(s.PBR, 0.7, 6, 5) + ScaleInverse(s.MixFactor, 6, 50, 3);

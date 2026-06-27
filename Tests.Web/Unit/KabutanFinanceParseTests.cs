@@ -71,4 +71,15 @@ public class KabutanFinanceParseTests
         Assert.Equal(39.4, D(d, "EquityRatio"), 1);
         Assert.Equal(72.0, D(d, "InterestBearingDebtRatio"), 1); // 0.72倍 → 72%
     }
+
+    [Fact] // 1株配の実績系列(28→32→40→42)から 増配率・連続増配・減配回数・配当傾向 を算出
+    public void DividendHistory_DerivedFromResultTable()
+    {
+        var d = Parse();
+        Assert.Equal(5.0, D(d, "DividendGrowth1Y"), 1);                 // (42-40)/40
+        Assert.Equal(3, (int)D(d, "ConsecutiveDividendYears"));         // 28<32<40<42 = 3年連続増配
+        Assert.Equal(0, (int)D(d, "DividendCutCount"));                 // 減配なし
+        Assert.True(D(d, "DividendGrowth3Y") > 0);                      // 3年CAGR
+        Assert.Equal("連続増配", d["DividendTrend"]);
+    }
 }
