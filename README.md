@@ -274,6 +274,9 @@ sudo systemctl restart dstock
   Yahoo から ROE/ROA/利益率/CF/成長率/有利子負債を取得し、一覧に**指標とバフェットスコア**を素早く表示します
   (実測: 300件 約9秒)。`PriceRefresh` の一環として起動時にも自動実行されます。会社予想・通期実績は個別オープン/巡回で精緻化。
 - 取得状況の確認: `GET /api/admin/fetch/status`
+- **速度(リアルタイム性)**: 個別取得は4ソース(株探×2・Yahoo・IRBANK×2)を**並行取得**し、1銘柄あたり約0.7〜1.3秒。
+  巡回間隔(`DelaySeconds`)は既定4秒(robots の Crawl-delay と大きい方を採用)。
+- **自社株買い額**は IR BANK「自己株式の取得」から取得します。
 
 ### 暫定取得 と 実取得(一覧の表示について)
 
@@ -356,7 +359,7 @@ dotnet test DStockAnalysis.sln
 ```
 - `Tests/`(Core): 単体(Service/Model/Common)＋結合(サンプル生成・スコア)= 69 件
 - `Tests.Web/`(Web): 単体(指標解析)＋結合(StockStore・HTTP API・取得)= 36 件
-- 合計 **121 件・0 失敗**。詳細は `docs/単体試験項目書.md` / `docs/結合試験項目書.md`。
+- 合計 **123 件・0 失敗**。詳細は `docs/単体試験項目書.md` / `docs/結合試験項目書.md`。
 
 ---
 
