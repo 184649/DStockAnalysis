@@ -280,6 +280,10 @@ public class IndicatorFetchService : IIndicatorFetcher
                 double? rev = last[0], op = last[1], ord = last[2], net = last[3];
                 double? eps = last.Count > 4 ? last[4] : null;
                 latestRev = rev;
+
+                // 決算月: 期(YYYY.MM)の月部分から導出
+                var fm = Regex.Match(act[^1].period, @"\d{4}\.(\d{2})");
+                if (fm.Success) d["FiscalMonth"] = int.Parse(fm.Groups[1].Value, CultureInfo.InvariantCulture) + "月";
                 if (rev is > 0)
                 {
                     if (ord.HasValue) Put(d, "OrdinaryProfitMargin", Round1(ord.Value / rev.Value * 100));
