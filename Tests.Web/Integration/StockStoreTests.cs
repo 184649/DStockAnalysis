@@ -138,6 +138,31 @@ public class StockStoreTests : IDisposable
         Assert.True(s.IndicatorsFetched);
     }
 
+    [Fact] // 暫定取得(株価/PER等のみ)はスコアを出さず、財務取得で実取得に昇格してスコアが付く
+    public void ApplyFetched_Provisional_NoScore_ThenFullUpgradesAndScores()
+    {
+        var store = NewStore();
+        var code = store.AllCodes().First();
+
+        // 暫定: Yahoo一括相当(株価/PER/PBR/EPSのみ)。財務指標が無いためスコアは出さない。
+        store.ApplyFetched(new[] { (code, new Dictionary<string, string>
+            { ["Price"] = "1000", ["PER"] = "10", ["PBR"] = "1.2", ["EPS"] = "100" }) }, save: true, provisional: true);
+        var s = store.Get(code)!;
+        Assert.True(s.IndicatorsFetched);
+        Assert.True(s.Provisional);
+        Assert.Equal(10, s.PER, 3);          // 暫定でも PER 等は表示できる
+        Assert.Equal(0, s.BuffettScore);     // スコアは未算出(誤った低評価を出さない)
+        Assert.Equal(0, s.OverallScore);
+
+        // 実取得: 会社予想・財務(ROE/利益率/CF/自己資本比率)を反映 → 実取得へ昇格しスコアが付く
+        store.ApplyFetched(new[] { (code, new Dictionary<string, string>
+            { ["ROE"] = "15", ["ROA"] = "8", ["OperatingMargin"] = "18", ["NetProfitMargin"] = "12",
+              ["EquityRatio"] = "60", ["OperatingCF"] = "100000", ["FreeCashFlow"] = "60000" }) });
+        s = store.Get(code)!;
+        Assert.False(s.Provisional);
+        Assert.True(s.BuffettScore > 0);
+    }
+
     [Fact]
     public void ApplyFetched_MarksBenefitUnknownAndTotalYieldDividendOnly()
     {

@@ -154,12 +154,21 @@ const COLS = [
   { k: "JudgementText", label: "判定", kind: "text" },
 ];
 
+// 暫定取得(Yahoo一括)で表示できる指標。これ以外(利益率・ROA・CF・自己資本比率・成長率・スコア等)は
+// 会社予想・財務を取得するまで「-」にする(暫定データで誤ったスコアを出さないため)。
+const PROV_OK = new Set(["Price", "PER", "PBR", "MixFactor", "EPS", "BPS", "Dividend", "DividendYield"]);
+
 function cell(col, s) {
   const v = s[col.k];
   const unf = !s.IndicatorsFetched;
+  const prov = s.Provisional;
   // 基本情報(コード・銘柄名・市場等)は常に表示。指標・スコアは未取得なら「-」。
   switch (col.kind) {
-    case "id": return `<td class="sticky">${esc(v)}${unf ? ' <span class="flag-off" title="実データ未取得">未</span>' : ""}</td>`;
+    case "id": {
+      const badge = unf ? ' <span class="flag-off" title="実データ未取得">未</span>'
+        : prov ? ' <span class="flag-prov" title="暫定: 株価/PER等のみ。開くと会社予想・財務を取得しスコア算出">暫</span>' : "";
+      return `<td class="sticky">${esc(v)}${badge}</td>`;
+    }
     case "name": return `<td class="sticky2">${esc(v)}</td>`;
     case "text": {
       // 基本情報(市場/業種/規模)は常に表示。その他のテキスト指標は未取得/空欄なら「-」。
@@ -169,6 +178,11 @@ function cell(col, s) {
     }
   }
   if (unf) { // 指標未取得は色なしの「-」
+    if (col.kind === "flag" || col.kind === "flaglong") return `<td><span class="flag-off">-</span></td>`;
+    return `<td class="num">-</td>`;
+  }
+  // 暫定取得: 財務指標・スコアは未取得扱いの「-」(会社予想・財務を取得すると表示)
+  if (prov && !PROV_OK.has(col.k)) {
     if (col.kind === "flag" || col.kind === "flaglong") return `<td><span class="flag-off">-</span></td>`;
     return `<td class="num">-</td>`;
   }
@@ -351,9 +365,12 @@ function renderResults() {
   });
   document.getElementById("resultText").textContent = `${state.results.length} 件 (行をダブルクリックで個別分析 / 右クリックで比較に追加 / 見出しクリックで並べ替え)`;
   const unf = state.meta.UnfetchedCount, fetched = state.meta.FetchedCount;
+  const full = state.meta.FullyFetchedCount ?? fetched;
+  const prov = Math.max(0, fetched - full);
   document.getElementById("indicatorNotice").innerHTML =
-    `全 ${state.meta.Total} 銘柄 / 実データ取得済み <b>${fetched}</b> 件` +
-    (unf > 0 ? ` ・ <span class="flag-off">未取得 ${unf} 件</span>(銘柄を開くと最新化)` : "");
+    `全 ${state.meta.Total} 銘柄 / 実取得(会社予想・財務・スコア) <b>${full}</b> 件` +
+    (prov > 0 ? ` ・ <span class="flag-prov">暫定 ${prov} 件</span>(株価/PER等のみ。開くと実取得)` : "") +
+    (unf > 0 ? ` ・ <span class="flag-off">未取得 ${unf} 件</span>` : "");
 }
 
 // ===== プリセット =====
@@ -538,7 +555,7 @@ function renderDetail() {
     </div>`;
   const bd = state.buffett || [];
   const bdSum = Math.round(bd.reduce((a, c) => a + (c.Earned || 0), 0));
-  const buffettBox = (s.IndicatorsFetched && bd.length) ? `
+  const buffettBox = (s.IndicatorsFetched && !s.Provisional && bd.length) ? `
     <div class="box">
       <h3>バフェット採点の根拠 <span class="bd-total ${qClass("buffett", bdSum)}">${bdSum} / 100</span></h3>
       <div class="desc">バフェットの投資原則(資本収益力=ROA重視・利益率=モート・財務健全性・キャッシュ創出力・株主還元/再投資の質・割安性=安全余裕)で、

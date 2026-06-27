@@ -43,6 +43,8 @@ public class StockStore
     public int Count { get { lock (_lock) return _stocks.Count; } }
     public int FetchedCount { get { lock (_lock) return _stocks.Count(s => s.IndicatorsFetched); } }
     public int UnfetchedCount { get { lock (_lock) return _stocks.Count(s => !s.IndicatorsFetched); } }
+    /// <summary>会社予想・財務まで取得した「実取得」銘柄数(暫定は除く。スコア算出対象)。</summary>
+    public int FullyFetchedCount { get { lock (_lock) return _stocks.Count(s => s.IndicatorsFetched && !s.Provisional); } }
 
     /// <summary>起動時の初期ロード。保存→JPX全銘柄→サンプル の優先順位。</summary>
     public void Initialize()
@@ -53,8 +55,14 @@ public class StockStore
             if (_storage.HasSavedStocks)
             {
                 stocks = _storage.LoadStocks();
-                // 実データ未取得の銘柄は擬似値を持たないよう一掃(旧バージョンのサンプル値の混入を防ぐ)
-                foreach (var s in stocks) if (!s.IndicatorsFetched) s.ClearIndicators();
+                // 実データ未取得の銘柄は擬似値を持たないよう一掃(旧バージョンのサンプル値の混入を防ぐ)。
+                // また、財務指標を持たない「暫定取得済み」の銘柄(旧バージョンの一括Yahoo埋め)は
+                // 暫定扱いに是正してスコアを消す(誤った低評価を表示しないため。巡回/オープンで実取得に昇格)。
+                foreach (var s in stocks)
+                {
+                    if (!s.IndicatorsFetched) { s.ClearIndicators(); continue; }
+                    if (!s.Provisional && LacksFundamentals(s)) { s.Provisional = true; s.ClearScores(); }
+                }
                 _masterDate = stocks.Count > 0 ? stocks.Max(s => s.DataUpdated) : null;
                 _log.LogInformation("保存済み銘柄を読み込みました: {Count} 件 (実データ取得済み {Fetched})",
                     stocks.Count, stocks.Count(s => s.IndicatorsFetched));
@@ -72,11 +80,16 @@ public class StockStore
             }
 
             _storage.ApplyUserData(stocks);
-            // スコアは実データ取得済みの銘柄のみ算出(未取得は0のまま=「未取得」表示)
-            foreach (var s in stocks) if (s.IndicatorsFetched) _scorer.Recalculate(s);
+            // スコアは実取得(会社予想・財務あり)の銘柄のみ算出(未取得・暫定は0のまま=「-」表示)
+            foreach (var s in stocks) if (s.IndicatorsFetched && !s.Provisional) _scorer.Recalculate(s);
             ReplaceInternal(stocks);
         }
     }
+
+    /// <summary>財務指標(利益率・ROA・CF・自己資本比率・ROE)をどれも持たない=暫定取得(株価/PER等のみ)とみなす。</summary>
+    private static bool LacksFundamentals(Stock s) =>
+        s.OperatingMargin == 0 && s.NetProfitMargin == 0 && s.ROA == 0 && s.ROE == 0
+        && s.OperatingCF == 0 && s.FreeCashFlow == 0 && s.EquityRatio == 0;
 
     private void ReplaceInternal(List<Stock> stocks)
     {
@@ -134,7 +147,7 @@ public class StockStore
             if (memo != null) s.Memo = memo;
             if (check != null) s.BuffettCheck = check;
             if (interest.HasValue) s.UserInterest = interest.Value;
-            _scorer.Recalculate(s);
+            if (!s.Provisional) _scorer.Recalculate(s); // 暫定はスコアを出さない
             _storage.SaveUserData(_stocks);
             _storage.SaveStocks(_stocks);
             return s;
@@ -182,7 +195,7 @@ public class StockStore
         lock (_lock)
         {
             if (!_byCode.TryGetValue(code, out var s)) return null;
-            if (price <= 0 || !s.IndicatorsFetched) return s;
+            if (price <= 0 || !s.IndicatorsFetched || s.Provisional) return s; // 暫定は別経路で更新
             s.Price = price;
             if (s.PER > 0) s.EPS = Math.Round(price / s.PER, 1);
             if (s.PBR > 0) s.BPS = Math.Round(price / s.PBR);
@@ -198,8 +211,11 @@ public class StockStore
     }
 
     /// <summary>取得済みの指標行(列単位)を全銘柄へ反映する。自動取得バッチから呼ばれる。
-    /// save=false の場合は保存しない(呼び出し側でまとめて Persist する)。</summary>
-    public int ApplyFetched(IEnumerable<(string code, Dictionary<string, string> values)> rows, bool save = true)
+    /// save=false の場合は保存しない(呼び出し側でまとめて Persist する)。
+    /// provisional=true は Yahoo一括の暫定値(株価/PER/PBR/利回り/EPS のみ)。
+    /// この場合スコアは算出せず(財務指標が無いため)、暫定フラグを立てる。
+    /// 既に実取得(会社予想・財務あり)の銘柄を暫定値で上書きはしない(呼び出し側で抑止)。</summary>
+    public int ApplyFetched(IEnumerable<(string code, Dictionary<string, string> values)> rows, bool save = true, bool provisional = false)
     {
         lock (_lock)
         {
@@ -211,9 +227,18 @@ public class StockStore
                 var columns = new HashSet<string>(values.Keys, StringComparer.OrdinalIgnoreCase);
                 // CSV と同じ解釈にするため一旦 CSV テキスト化して解析
                 var src = ParseValuesToStock(code, values);
-                existing.CopyIndicatorsFrom(src, columns);
+                existing.CopyIndicatorsFrom(src, columns); // ここで Provisional=false になる
                 ClearUnverifiedBenefit(existing); // 優待は自動取得できないため未取得扱い(擬似優待を消す)
-                _scorer.Recalculate(existing);
+                if (provisional)
+                {
+                    // 暫定: 財務指標が無いためスコアは出さない(誤った低評価を避ける)
+                    existing.Provisional = true;
+                    existing.ClearScores();
+                }
+                else
+                {
+                    _scorer.Recalculate(existing);
+                }
                 updated++;
             }
             if (updated > 0 && save) _storage.SaveStocks(_stocks);

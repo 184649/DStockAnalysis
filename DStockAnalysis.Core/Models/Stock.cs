@@ -150,6 +150,11 @@ public class Stock : ObservableObject
     /// 実データ取得時に擬似優待を消して true にする。CSV で優待列を取り込むと false。</summary>
     public bool BenefitUnknown { get; set; }
 
+    /// <summary>暫定取得(Yahoo一括の株価/PER/PBR/利回り/EPS のみ)で、財務指標(利益率・ROA・CF・自己資本比率・
+    /// 成長率など)や精密な会社予想がまだ無い状態。true の間はスコアを算出しない(画面では「暫定」と表示し、
+    /// 財務指標・スコアは「-」)。個別分析を開く/巡回取得で会社予想・財務を取得すると false=実取得になる。</summary>
+    public bool Provisional { get; set; }
+
     private double _userInterest = 50; // 自分の興味(0-100)。買いたい度に影響。
     public double UserInterest { get => _userInterest; set { if (SetProperty(ref _userInterest, value)) OnPropertyChanged(nameof(JudgementText)); } }
 
@@ -244,6 +249,7 @@ public class Stock : ObservableObject
 
         IsSampleIndicators = false; // 実データで上書き
         IndicatorsFetched = true;   // 実データ取得済み
+        Provisional = false;        // 列単位マージ(CSV/会社予想・財務)は実取得扱い。暫定はStockStore側でtrueに上書き
         if (benefitProvided) BenefitUnknown = false; // CSV で優待列が来たら実データ優待
         History.Clear();           // 時系列は選択時に再生成
     }
@@ -276,8 +282,17 @@ public class Stock : ObservableObject
         BenefitValue = BenefitYield = TotalYield = 0;
         IsSampleIndicators = false;
         IndicatorsFetched = false;
+        Provisional = false;
         BenefitUnknown = true;
         History.Clear();
+    }
+
+    /// <summary>各種スコアを 0(未算出)に戻す。暫定取得(財務指標なし)でスコアを表示しないために使う。</summary>
+    public void ClearScores()
+    {
+        SafetyScore = GrowthScore = ProfitabilityScore = ReturnScore = EfficiencyScore = ValuationScore = 0;
+        LongTermScore = RevaluationScore = BuffettScore = WantToBuyScore = OverallScore = 0;
+        Judgement = OverallJudgement.調査中;
     }
 
     /// <summary>総合判定の表示文字列。</summary>
