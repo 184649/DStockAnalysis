@@ -51,6 +51,7 @@ app.MapGet("/api/meta", (StockStore store, PresetService presets) =>
         MasterDate = date,
         Total = store.Count,
         FetchedCount = store.FetchedCount,
+        FullyFetchedCount = store.FullyFetchedCount,
         UnfetchedCount = store.UnfetchedCount,
         MasterStale = stale,
         Sectors = store.Sectors(),

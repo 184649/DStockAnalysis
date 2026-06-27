@@ -132,6 +132,7 @@ table.grid tbody tr { cursor: pointer; }
 
 .flag-on { color: var(--ok-solid); font-weight: bold; }
 .flag-off { color: #606A72; }
+.flag-prov { color: #B58900; font-weight: 600; }
 
 /* ===== 個別分析 ===== */
 #analysis { flex-direction: row; }

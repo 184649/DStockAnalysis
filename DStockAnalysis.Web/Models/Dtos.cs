@@ -116,6 +116,7 @@ public class StockSummaryDto
     public double UserInterest { get; set; }
 
     public bool IndicatorsFetched { get; set; }
+    public bool Provisional { get; set; }
 
     public static StockSummaryDto From(Stock s) => new()
     {
@@ -163,7 +164,7 @@ public class StockSummaryDto
         WantToBuyScore = s.WantToBuyScore, OverallScore = s.OverallScore, OverallGrade = s.OverallGrade,
         JudgementText = s.JudgementText, UserInterest = s.UserInterest,
 
-        IndicatorsFetched = s.IndicatorsFetched
+        IndicatorsFetched = s.IndicatorsFetched, Provisional = s.Provisional
     };
 }
 
@@ -181,6 +182,7 @@ public class MetaDto
     public DateTime? MasterDate { get; set; }
     public int Total { get; set; }
     public int FetchedCount { get; set; }
+    public int FullyFetchedCount { get; set; }
     public int UnfetchedCount { get; set; }
     public bool MasterStale { get; set; }
     public List<string> Sectors { get; set; } = new();

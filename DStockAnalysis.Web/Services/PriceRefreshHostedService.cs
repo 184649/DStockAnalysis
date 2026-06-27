@@ -61,15 +61,17 @@ public class PriceRefreshHostedService : BackgroundService
                 !double.TryParse(ps, NumberStyles.Any, CultureInfo.InvariantCulture, out var price) || price <= 0)
                 continue;
 
-            if (_coordinator.IsFresh(code))
+            var cur = _store.Get(code);
+            bool hasFull = cur != null && cur.IndicatorsFetched && !cur.Provisional;
+            if (_coordinator.IsFresh(code) || hasFull)
             {
-                // 株探(会社予想)で精密取得済み → 株価のみ最新化(精密値は保持)
+                // 株探(会社予想・財務)で実取得済み → 株価のみ最新化(精密値・スコアは保持。暫定で上書きしない)
                 if (_store.UpdatePrice(code, price) != null) priceOnly++;
             }
             else
             {
-                // 未取得 → Yahoo の暫定指標で一覧を埋める
-                if (_store.ApplyFetched(new[] { (code, dict) }, save: false) > 0) provisional++;
+                // 未取得 → Yahoo の暫定指標で一覧を埋める(スコアは出さない)
+                if (_store.ApplyFetched(new[] { (code, dict) }, save: false, provisional: true) > 0) provisional++;
             }
         }
         _store.Persist();
