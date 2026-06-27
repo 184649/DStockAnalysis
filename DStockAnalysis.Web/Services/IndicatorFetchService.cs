@@ -266,6 +266,23 @@ public class IndicatorFetchService : IIndicatorFetcher
                 }
                 if (act.Count >= 4 && act[^4].cells[0] is > 0 && rev is > 0)
                     Put(d, "RevenueGrowth3Y", Round1((Math.Pow(rev.Value / act[^4].cells[0]!.Value, 1.0 / 3) - 1) * 100));
+
+                // 1株配当の実績系列から 増配率・連続増配・減配回数・非減配年数・配当傾向 を算出
+                var divs = act.Where(r => r.cells.Count > 5 && r.cells[5] is >= 0).Select(r => r.cells[5]!.Value).ToList();
+                if (divs.Count >= 2)
+                {
+                    if (divs[^2] > 0) Put(d, "DividendGrowth1Y", Round1((divs[^1] - divs[^2]) / divs[^2] * 100));
+                    if (divs.Count >= 4 && divs[^4] > 0)
+                        Put(d, "DividendGrowth3Y", Round1((Math.Pow(divs[^1] / divs[^4], 1.0 / 3) - 1) * 100));
+
+                    int streak = 0; for (int i = divs.Count - 1; i > 0; i--) { if (divs[i] > divs[i - 1]) streak++; else break; }
+                    int noncut = 0; for (int i = divs.Count - 1; i > 0; i--) { if (divs[i] >= divs[i - 1]) noncut++; else break; }
+                    int cuts = 0; for (int i = 1; i < divs.Count; i++) if (divs[i] < divs[i - 1]) cuts++;
+                    d["ConsecutiveDividendYears"] = streak.ToString(CultureInfo.InvariantCulture);
+                    d["NonDividendCutYears"] = noncut.ToString(CultureInfo.InvariantCulture);
+                    d["DividendCutCount"] = cuts.ToString(CultureInfo.InvariantCulture);
+                    d["DividendTrend"] = streak >= 3 ? "連続増配" : (divs[^1] > divs[^2] ? "増配" : divs[^1] < divs[^2] ? "減配" : "安定");
+                }
             }
         }
 
