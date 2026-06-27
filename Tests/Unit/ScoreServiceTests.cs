@@ -134,6 +134,34 @@ public class ScoreServiceTests
         Assert.True(Cap(sound) > Cap(levered), $"sound={Cap(sound)} levered={Cap(levered)}");
     }
 
+    [Fact] // UT-SC-11: 配当の継続性(連続増配・減配なし)が還元スコアを押し上げ、減配は押し下げる
+    public void Buffett_DividendReliability_RewardsConsecutiveAndPenalizesCuts()
+    {
+        double Ret(Stock s) => _svc.BuffettBreakdown(s).First(c => c.Key == "return").Earned;
+        var aristocrat = new Stock { Code = "1", DividendYield = 3, PayoutRatio = 40, ConsecutiveDividendYears = 12, DividendCutCount = 0, FreeCashFlow = 1000 };
+        var cutter = new Stock { Code = "2", DividendYield = 3, PayoutRatio = 40, ConsecutiveDividendYears = 0, DividendCutCount = 3, FreeCashFlow = 1000 };
+        Assert.True(Ret(aristocrat) > Ret(cutter), $"aristocrat={Ret(aristocrat)} cutter={Ret(cutter)}");
+    }
+
+    [Fact] // UT-SC-12: 無配でも高ROAでの再投資は評価される(バークシャー型を不当に減点しない)
+    public void Buffett_NoDividend_HighRoa_IsCreditedViaReinvestment()
+    {
+        double Ret(Stock s) => _svc.BuffettBreakdown(s).First(c => c.Key == "return").Earned;
+        var compounder = new Stock { Code = "1", DividendYield = 0, PayoutRatio = 0, ROA = 12, ROE = 18, FreeCashFlow = 1000 };
+        Assert.True(Ret(compounder) >= 6, $"reinvestment credit too low: {Ret(compounder)}");
+    }
+
+    [Fact] // UT-SC-13: どの銘柄でも各内訳は 0..配点 に収まり、満点合計は 100
+    public void Buffett_Breakdown_AlwaysWithinBounds()
+    {
+        foreach (var s in new[] { TestData.Good(), TestData.Weak(), new Stock { Code = "x" } })
+        {
+            var bd = _svc.BuffettBreakdown(s);
+            Assert.Equal(100, bd.Sum(c => c.Max));
+            foreach (var c in bd) Assert.InRange(c.Earned, 0, c.Max);
+        }
+    }
+
     private static List<Action<YesNoUnknown>> YesSetters(BuffettCheck b) => new()
     {
         v => b.CanExplainEarnings = v, v => b.UnderstandBusiness = v, v => b.DemandIn10Years = v,

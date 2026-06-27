@@ -72,6 +72,13 @@ public class KabutanFinanceParseTests
         Assert.Equal(72.0, D(d, "InterestBearingDebtRatio"), 1); // 0.72倍 → 72%
     }
 
+    [Fact] // 決算期(2026.03)から決算月を導出
+    public void FiscalMonth_DerivedFromPeriod()
+    {
+        var d = Parse();
+        Assert.Equal("3月", d["FiscalMonth"]);
+    }
+
     [Fact] // 1株配の実績系列(28→32→40→42)から 増配率・連続増配・減配回数・配当傾向 を算出
     public void DividendHistory_DerivedFromResultTable()
     {

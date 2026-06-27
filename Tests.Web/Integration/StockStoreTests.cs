@@ -138,6 +138,44 @@ public class StockStoreTests : IDisposable
         Assert.True(s.IndicatorsFetched);
     }
 
+    [Fact] // 取得サービスが返す全列(株探財務+配当履歴+IRBANK自社株買い+決算月)が Stock へ反映されスコア算出
+    public void ApplyFetched_FullIndicatorSet_MapsAllAndScores()
+    {
+        var store = NewStore();
+        var code = store.AllCodes().First();
+        var values = new Dictionary<string, string>
+        {
+            ["Price"] = "2000", ["PER"] = "12", ["PBR"] = "1.1", ["DividendYield"] = "3.2", ["MarketCap"] = "500000",
+            ["ROE"] = "14.6", ["ROA"] = "5.7", ["TotalAssetTurnover"] = "0.93", ["FiscalMonth"] = "3月",
+            ["OperatingMargin"] = "4.7", ["OrdinaryProfitMargin"] = "8.1", ["NetProfitMargin"] = "6.1",
+            ["EquityRatio"] = "39.4", ["InterestBearingDebtRatio"] = "72",
+            ["RevenueGrowthRate"] = "0.7", ["RevenueGrowth1Y"] = "0.7", ["RevenueGrowth3Y"] = "2.1",
+            ["NetProfitGrowthRate"] = "2.3", ["EpsGrowthRate"] = "4.0", ["OperatingProfitGrowthRate"] = "2.6",
+            ["OperatingCF"] = "1131837", ["InvestingCF"] = "-388872", ["FinancingCF"] = "-726477",
+            ["FreeCashFlow"] = "742965", ["OperatingCashFlowMargin"] = "7.6",
+            ["DividendGrowth1Y"] = "5.0", ["DividendGrowth3Y"] = "14.5", ["ConsecutiveDividendYears"] = "3",
+            ["DividendCutCount"] = "0", ["NonDividendCutYears"] = "3", ["DividendTrend"] = "連続増配",
+            ["BuybackAmount"] = "170057",
+        };
+        int n = store.ApplyFetched(new[] { (code, values) });
+        Assert.Equal(1, n);
+        var s = store.Get(code)!;
+        Assert.False(s.Provisional);
+        Assert.Equal("3月", s.FiscalMonth);
+        Assert.Equal(5.7, s.ROA, 1);
+        Assert.Equal(0.93, s.TotalAssetTurnover, 2);
+        Assert.Equal(4.7, s.OperatingMargin, 1);
+        Assert.Equal(8.1, s.OrdinaryProfitMargin, 1);
+        Assert.Equal(39.4, s.EquityRatio, 1);
+        Assert.Equal(1131837, s.OperatingCF, 0);
+        Assert.Equal(-388872, s.InvestingCF, 0);
+        Assert.Equal(742965, s.FreeCashFlow, 0);
+        Assert.Equal(3, s.ConsecutiveDividendYears);
+        Assert.Equal("連続増配", s.DividendTrend);
+        Assert.Equal(170057, s.BuybackAmount, 0);
+        Assert.True(s.BuffettScore > 0); // 実取得なのでスコア算出
+    }
+
     [Fact] // 暫定取得(株価/PER等のみ)はスコアを出さず、財務取得で実取得に昇格してスコアが付く
     public void ApplyFetched_Provisional_NoScore_ThenFullUpgradesAndScores()
     {

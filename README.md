@@ -362,7 +362,7 @@ dotnet test DStockAnalysis.sln
 ```
 - `Tests/`(Core): 単体(Service/Model/Common)＋結合(サンプル生成・スコア)= 69 件
 - `Tests.Web/`(Web): 単体(指標解析)＋結合(StockStore・HTTP API・取得)= 36 件
-- 合計 **123 件・0 失敗**。詳細は `docs/単体試験項目書.md` / `docs/結合試験項目書.md`。
+- 合計 **128 件・0 失敗**。詳細は `docs/単体試験項目書.md` / `docs/結合試験項目書.md`。
 
 ---
 
