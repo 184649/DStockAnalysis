@@ -21,8 +21,9 @@ public class FetchCoordinator
 
     /// <summary>取得指標スキーマのバージョン。取得する指標を増やしたら上げる。
     /// これより古いバージョンで取得した銘柄は「未更新」とみなし、開いた時に自動で再取得する
-    /// (例: 営業利益率・ROA・各CF・成長率を株探財務ページから取得するようにした v2)。</summary>
-    private const int SchemaVersion = 2;
+    /// (例: 営業利益率・ROA・各CF・成長率を株探財務ページから取得するようにした v2、
+    ///  配当履歴・自社株買い(IRBANK)を追加した v3)。</summary>
+    private const int SchemaVersion = 3;
 
     private class CacheEntry { public DateTime At { get; set; } public int Ver { get; set; } }
 

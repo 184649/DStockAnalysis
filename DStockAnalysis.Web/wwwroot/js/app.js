@@ -341,29 +341,58 @@ function sortResults() {
   });
 }
 
+// 描画は重い(全銘柄×全列)。初期は ROW_BASE 行だけ描画し、下スクロールで追加描画する(カクつき防止)。
+const ROW_BASE = 150, ROW_STEP = 150;
+
+function rowsHtml(from, to) {
+  return state.results.slice(from, to).map(s =>
+    `<tr data-code="${esc(s.Code)}">` + COLS.map(c => cell(c, s)).join("") + "</tr>"
+  ).join("");
+}
+
+function resultLabel(shown) {
+  const total = state.results.length;
+  const more = shown < total ? `(上位 ${shown} 件表示・下スクロールで追加)` : "";
+  return `${total} 件 ${more} ダブルクリックで個別分析 / 右クリックで比較 / 見出しで並べ替え`;
+}
+
 function renderResults() {
   sortResults();
   const t = document.getElementById("screenTable");
-  let head = "<thead><tr>" + COLS.map((c) => {
+  const head = "<thead><tr>" + COLS.map((c) => {
     const cls = c.kind === "id" ? "sticky" : c.kind === "name" ? "sticky2" : "";
     const arrow = state.sort.key === c.k ? `<span class="arrow">${state.sort.dir > 0 ? "▲" : "▼"}</span>` : "";
     return `<th class="${cls}" data-key="${esc(c.k)}" title="クリックで並べ替え">${c.label}${arrow}</th>`;
   }).join("") + "</tr></thead>";
-  let body = "<tbody>" + state.results.map(s =>
-    `<tr data-code="${esc(s.Code)}">` + COLS.map(c => cell(c, s)).join("") + "</tr>"
-  ).join("") + "</tbody>";
-  t.innerHTML = head + body;
-  t.querySelectorAll("thead th").forEach(th => th.onclick = () => {
+  const shown = Math.min(ROW_BASE, state.results.length);
+  t.innerHTML = head + "<tbody>" + rowsHtml(0, shown) + "</tbody>";
+
+  // イベントは行ごとに付けず、テーブルに1つだけ(委譲)。listener 数を ~7500 → 数個に削減。
+  t.onclick = (e) => {
+    const th = e.target.closest("thead th"); if (!th) return;
     const k = th.dataset.key;
-    if (state.sort.key === k) state.sort.dir = -state.sort.dir;
-    else { state.sort.key = k; state.sort.dir = 1; }
+    if (state.sort.key === k) state.sort.dir = -state.sort.dir; else { state.sort.key = k; state.sort.dir = 1; }
     renderResults();
-  });
-  t.querySelectorAll("tbody tr").forEach(tr => {
-    tr.ondblclick = () => openAnalysis(tr.dataset.code);
-    tr.oncontextmenu = (e) => { e.preventDefault(); addToCompare(tr.dataset.code); };
-  });
-  document.getElementById("resultText").textContent = `${state.results.length} 件 (行をダブルクリックで個別分析 / 右クリックで比較に追加 / 見出しクリックで並べ替え)`;
+  };
+  t.ondblclick = (e) => { const tr = e.target.closest("tbody tr"); if (tr) openAnalysis(tr.dataset.code); };
+  t.oncontextmenu = (e) => { const tr = e.target.closest("tbody tr"); if (tr) { e.preventDefault(); addToCompare(tr.dataset.code); } };
+
+  // 下端付近までスクロールしたら追加描画(全件をDOMに持たない=軽い)。スクロール位置は維持。
+  const wrap = t.closest(".table-wrap");
+  if (wrap && !wrap._moreBound) {
+    wrap._moreBound = true;
+    wrap.addEventListener("scroll", () => {
+      const tbody = t.querySelector("tbody"); if (!tbody) return;
+      const rendered = tbody.children.length;
+      if (rendered < state.results.length && wrap.scrollTop + wrap.clientHeight >= wrap.scrollHeight - 400) {
+        const next = Math.min(rendered + ROW_STEP, state.results.length);
+        tbody.insertAdjacentHTML("beforeend", rowsHtml(rendered, next));
+        document.getElementById("resultText").textContent = resultLabel(next);
+      }
+    });
+  }
+  if (wrap) wrap.scrollTop = 0;
+  document.getElementById("resultText").textContent = resultLabel(shown);
   const unf = state.meta.UnfetchedCount, fetched = state.meta.FetchedCount;
   const full = state.meta.FullyFetchedCount ?? fetched;
   const prov = Math.max(0, fetched - full);
