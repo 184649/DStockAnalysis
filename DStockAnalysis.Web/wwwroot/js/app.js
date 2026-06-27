@@ -341,19 +341,44 @@ function sortResults() {
   });
 }
 
-// 描画は重い(全銘柄×全列)。初期は ROW_BASE 行だけ描画し、下スクロールで追加描画する(カクつき防止)。
-const ROW_BASE = 150, ROW_STEP = 150;
-
+// 行の仮想化: 全銘柄×全列(数十万セル)を描画せず、画面に見える行だけを描画する。
+// 上下に高さスペーサ行を置いてスクロール量を保ち、スクロールに応じて可視範囲のみ再描画する。
 function rowsHtml(from, to) {
-  return state.results.slice(from, to).map(s =>
-    `<tr data-code="${esc(s.Code)}">` + COLS.map(c => cell(c, s)).join("") + "</tr>"
-  ).join("");
+  const r = state.results; let out = "";
+  for (let i = from; i < to; i++) {
+    const s = r[i];
+    out += `<tr data-code="${esc(s.Code)}" class="${i % 2 ? "" : "zeb"}">` + COLS.map(c => cell(c, s)).join("") + "</tr>";
+  }
+  return out;
 }
 
-function resultLabel(shown) {
+function resultLabel() {
+  return `${state.results.length} 件  ダブルクリックで個別分析 / 右クリックで比較 / 見出しで並べ替え`;
+}
+
+// 可視範囲だけ描画する(DOM は常に ~画面分の行のみ = 高速)。
+function renderWindow() {
+  const t = document.getElementById("screenTable");
+  const wrap = t && t.closest(".table-wrap");
+  const tbody = t && t.querySelector("tbody");
+  if (!t || !wrap || !tbody) return;
   const total = state.results.length;
-  const more = shown < total ? `(上位 ${shown} 件表示・下スクロールで追加)` : "";
-  return `${total} 件 ${more} ダブルクリックで個別分析 / 右クリックで比較 / 見出しで並べ替え`;
+  if (total === 0) { tbody.innerHTML = ""; return; }
+  // 初回は実際の行高さを測ってから仮想化(ブラウザ/拡大率の差を吸収)
+  if (!state.rowH) {
+    tbody.innerHTML = rowsHtml(0, Math.min(total, 20));
+    const probe = tbody.querySelector("tr");
+    state.rowH = probe ? probe.offsetHeight || 27 : 27;
+  }
+  const rh = state.rowH;
+  const start = Math.max(0, Math.floor(wrap.scrollTop / rh) - 8);
+  const vis = Math.ceil((wrap.clientHeight || 600) / rh) + 16;
+  const end = Math.min(total, start + vis);
+  const n = COLS.length;
+  tbody.innerHTML =
+    `<tr aria-hidden="true"><td colspan="${n}" style="padding:0;border:0;height:${start * rh}px"></td></tr>` +
+    rowsHtml(start, end) +
+    `<tr aria-hidden="true"><td colspan="${n}" style="padding:0;border:0;height:${(total - end) * rh}px"></td></tr>`;
 }
 
 function renderResults() {
@@ -364,35 +389,28 @@ function renderResults() {
     const arrow = state.sort.key === c.k ? `<span class="arrow">${state.sort.dir > 0 ? "▲" : "▼"}</span>` : "";
     return `<th class="${cls}" data-key="${esc(c.k)}" title="クリックで並べ替え">${c.label}${arrow}</th>`;
   }).join("") + "</tr></thead>";
-  const shown = Math.min(ROW_BASE, state.results.length);
-  t.innerHTML = head + "<tbody>" + rowsHtml(0, shown) + "</tbody>";
+  t.innerHTML = head + "<tbody></tbody>";
 
-  // イベントは行ごとに付けず、テーブルに1つだけ(委譲)。listener 数を ~7500 → 数個に削減。
+  // イベントは行ごとに付けず、テーブルに委譲(listener 数 ~7500 → 数個)。
   t.onclick = (e) => {
     const th = e.target.closest("thead th"); if (!th) return;
     const k = th.dataset.key;
     if (state.sort.key === k) state.sort.dir = -state.sort.dir; else { state.sort.key = k; state.sort.dir = 1; }
     renderResults();
   };
-  t.ondblclick = (e) => { const tr = e.target.closest("tbody tr"); if (tr) openAnalysis(tr.dataset.code); };
-  t.oncontextmenu = (e) => { const tr = e.target.closest("tbody tr"); if (tr) { e.preventDefault(); addToCompare(tr.dataset.code); } };
+  t.ondblclick = (e) => { const tr = e.target.closest("tbody tr"); if (tr && tr.dataset.code) openAnalysis(tr.dataset.code); };
+  t.oncontextmenu = (e) => { const tr = e.target.closest("tbody tr"); if (tr && tr.dataset.code) { e.preventDefault(); addToCompare(tr.dataset.code); } };
 
-  // 下端付近までスクロールしたら追加描画(全件をDOMに持たない=軽い)。スクロール位置は維持。
   const wrap = t.closest(".table-wrap");
-  if (wrap && !wrap._moreBound) {
-    wrap._moreBound = true;
-    wrap.addEventListener("scroll", () => {
-      const tbody = t.querySelector("tbody"); if (!tbody) return;
-      const rendered = tbody.children.length;
-      if (rendered < state.results.length && wrap.scrollTop + wrap.clientHeight >= wrap.scrollHeight - 400) {
-        const next = Math.min(rendered + ROW_STEP, state.results.length);
-        tbody.insertAdjacentHTML("beforeend", rowsHtml(rendered, next));
-        document.getElementById("resultText").textContent = resultLabel(next);
-      }
-    });
+  if (wrap && !wrap._vbound) {
+    wrap._vbound = true;
+    let ticking = false;
+    wrap.addEventListener("scroll", () => { if (!ticking) { ticking = true; requestAnimationFrame(() => { ticking = false; renderWindow(); }); } });
+    window.addEventListener("resize", () => requestAnimationFrame(renderWindow));
   }
   if (wrap) wrap.scrollTop = 0;
-  document.getElementById("resultText").textContent = resultLabel(shown);
+  renderWindow();
+  document.getElementById("resultText").textContent = resultLabel();
   const unf = state.meta.UnfetchedCount, fetched = state.meta.FetchedCount;
   const full = state.meta.FullyFetchedCount ?? fetched;
   const prov = Math.max(0, fetched - full);

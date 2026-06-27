@@ -39,7 +39,12 @@ var app = builder.Build();
 app.Services.GetRequiredService<StockStore>().Initialize();
 
 app.UseDefaultFiles();
-app.UseStaticFiles();
+// 静的ファイル(js/css/html)は毎回再検証させ、更新が確実に反映されるようにする(古い画面が残らない)。
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = ctx =>
+        ctx.Context.Response.Headers["Cache-Control"] = "no-cache, must-revalidate"
+});
 
 // ===== メタ情報 =====
 app.MapGet("/api/meta", (StockStore store, PresetService presets) =>
