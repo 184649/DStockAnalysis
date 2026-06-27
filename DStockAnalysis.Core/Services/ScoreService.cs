@@ -143,55 +143,108 @@ public class ScoreService
         return Math.Round(Math.Clamp(v, 0, 100), 0);
     }
 
-    /// <summary>
-    /// バフェットスコア(100点満点)。
-    /// 事業理解・長期需要15 / 競争優位・参入障壁15 / 収益性15 / キャッシュ創出力15 /
-    /// 財務健全性15 / 株主還元の質10 / 割安性・価格妥当性10 / 暴落時保有適性5。
-    /// バフェットチェックの回答(はい加点/いいえ減点)も反映する。
-    /// </summary>
+    /// <summary>バフェットスコア(0-100)。内訳の合計。詳細は <see cref="BuffettBreakdown"/> を参照。</summary>
     public double CalcBuffett(Stock s)
+        => Math.Round(Math.Clamp(BuffettBreakdown(s).Sum(c => c.Earned), 0, 100), 0);
+
+    /// <summary>
+    /// バフェットスコアの内訳(配点・獲得点・根拠)を返す。スコアの透明性を確保するための明細。
+    ///
+    /// ウォーレン・バフェットの投資原則(Berkshire 株主への手紙 /「The Essays of Warren Buffett」/
+    /// Buffettology)に基づき、以下を重視して採点する。安さより「質」を優先し、
+    /// バフェットが嫌う特徴(過度なレバレッジで嵩上げした ROE、薄利・コモディティ事業、
+    /// CFを生まない事業、財務が脆弱なのに高配当、業績悪化中で見かけ上だけ割安=バリュートラップ)
+    /// に高得点が付かないようにする。
+    ///
+    /// 配点(計100):
+    ///  1. 資本収益力 20  — ROE(レバレッジ調整)× ROA。借入で嵩上げした ROE は減点。
+    ///  2. 利益率・モート 16 — 営業利益率・純利益率(価格決定力=堀の代理指標)。
+    ///  3. 利益の一貫性・成長 12 — 増収率・純利益/EPS 成長率(高成長より安定継続を重視)。
+    ///  4. 財務健全性 16 — 自己資本比率・有利子負債比率(低負債を高評価)。
+    ///  5. キャッシュ創出力 14 — 営業CF/フリーCFの黒字・営業CFマージン(オーナー利益)。
+    ///  6. 株主還元の質 8 — 配当性向の無理のなさ・連続増配・自社株買い(CF黒字が前提)。
+    ///  7. 割安性(質ゲート付き) 8 — PER/PBR/MIX。ただし上記1〜5の質に比例して減衰=安いだけの不良株は加点しない。
+    ///  8. 事業の理解・経営(定性) 6 — バフェットチェックの回答(理解/堀/経営の信頼/10年需要)。
+    ///
+    /// バフェットチェックの回答は各データ項目に小さな ±補正としても反映する(自身の定性判断を上乗せ)。
+    /// </summary>
+    public List<BuffettComponent> BuffettBreakdown(Stock s)
     {
         var b = s.BuffettCheck;
-        double v = 0;
+        string Pct(double v) => v.ToString("0.#") + "%";
+        double Adj(YesNoUnknown a, double yes, double no) => a == YesNoUnknown.Yes ? yes : a == YesNoUnknown.No ? no : 0;
 
-        // 事業理解・長期需要 (15)
-        v += Avg(YesScore(b.UnderstandBusiness), YesScore(b.CanExplainEarnings), YesScore(b.DemandIn10Years)) / 100.0 * 15;
+        var list = new List<BuffettComponent>();
 
-        // 競争優位性・参入障壁 (15)
-        v += Avg(YesScore(b.HasCompetitiveAdvantage), YesScore(b.HasEntryBarrier)) / 100.0 * 15;
+        // 1. 資本収益力 (20) — ROE はレバレッジ調整(自己資本比率が低いほど割引く)
+        double roe = Scale(s.ROE, 5, 18, 12);
+        double levFactor = s.EquityRatio > 0 && s.EquityRatio < 40 ? Math.Clamp(0.55 + 0.45 * s.EquityRatio / 40.0, 0.55, 1) : 1;
+        double roeCredit = roe * levFactor;
+        double roaCredit = Scale(s.ROA, 2, 10, 8);
+        double capital = roeCredit + roaCredit + Adj(b.StableHighRoe, 1.5, -1.5);
+        capital = Math.Clamp(capital, 0, 20);
+        list.Add(new("capital", "資本収益力(ROE×ROA)", capital, 20,
+            $"ROE {Pct(s.ROE)}（レバレッジ調整×{levFactor:0.00}）/ ROA {Pct(s.ROA)}。借入依存の高ROEは割引"));
 
-        // 収益性 (15) — 営業利益率・ROE 中心
-        double profit = Scale(s.OperatingMargin, 0, 25, 8) + Scale(s.ROE, 0, 20, 7);
-        if (b.HighMargin == YesNoUnknown.Yes) profit = Math.Min(15, profit + 2);
-        if (b.HighMargin == YesNoUnknown.No) profit = Math.Max(0, profit - 2);
-        v += Math.Min(profit, 15);
+        // 2. 利益率・モート (16)
+        double margins = Scale(s.OperatingMargin, 2, 18, 9) + Scale(s.NetProfitMargin, 1, 12, 7)
+                         + Adj(b.HighMargin, 1.5, -1.5);
+        margins = Math.Clamp(margins, 0, 16);
+        list.Add(new("margins", "利益率・モート", margins, 16,
+            $"営業利益率 {Pct(s.OperatingMargin)} / 純利益率 {Pct(s.NetProfitMargin)}。高く安定した利益率は価格決定力の証拠"));
 
-        // キャッシュ創出力 (15) — 営業CF/フリーCFの安定黒字
-        double cash = (s.OperatingCF > 0 ? 6 : 0) + (s.FreeCashFlow > 0 ? 6 : 0) + Scale(s.OperatingCashFlowMargin, 0, 25, 3);
-        if (b.StablePositiveOperatingCf == YesNoUnknown.Yes) cash = Math.Min(15, cash + 1);
-        if (b.StablePositiveFreeCf == YesNoUnknown.Yes) cash = Math.Min(15, cash + 1);
-        v += Math.Min(cash, 15);
+        // 3. 利益の一貫性・成長 (12) — 高すぎる成長より安定継続を重視。マイナス成長は減点
+        double g = Scale(s.RevenueGrowthRate != 0 ? s.RevenueGrowthRate : s.RevenueGrowth1Y, -5, 15, 4)
+                   + Scale(s.NetProfitGrowthRate, -10, 20, 4)
+                   + Scale(s.EpsGrowthRate, -10, 20, 4);
+        g = Math.Clamp(g, 0, 12);
+        list.Add(new("growth", "利益の一貫性・成長", g, 12,
+            $"増収率 {Pct(s.RevenueGrowthRate != 0 ? s.RevenueGrowthRate : s.RevenueGrowth1Y)} / 純利益成長 {Pct(s.NetProfitGrowthRate)} / EPS成長 {Pct(s.EpsGrowthRate)}"));
 
-        // 財務健全性 (15) — 自己資本比率・有利子負債比率
-        double fin = Scale(s.EquityRatio, 20, 80, 9) + ScaleInverse(s.InterestBearingDebtRatio, 0, 100, 6);
-        if (b.SoundFinance == YesNoUnknown.No) fin = Math.Max(0, fin - 3);
-        v += Math.Min(fin, 15);
+        // 4. 財務健全性 (16)
+        double fin = Scale(s.EquityRatio, 25, 65, 10) + ScaleInverse(s.InterestBearingDebtRatio, 30, 200, 6)
+                     + Adj(b.SoundFinance, 0, -2);
+        fin = Math.Clamp(fin, 0, 16);
+        list.Add(new("finance", "財務健全性", fin, 16,
+            $"自己資本比率 {Pct(s.EquityRatio)} / 有利子負債比率 {Pct(s.InterestBearingDebtRatio)}。低負債・厚い自己資本を高評価"));
 
-        // 株主還元の質 (10) — 配当の持続性・性向の安全性。優待は小さく加点のみ。
-        double ret = PayoutQuality(s.PayoutRatio) * 5 + Scale(s.ConsecutiveDividendYears, 0, 20, 3);
-        if (s.HasShareholderBenefit && s.FreeCashFlow > 0 && s.PayoutRatio < 80) ret += 1; // 優待は小さく
-        if (b.SustainableReturn == YesNoUnknown.No) ret = Math.Max(0, ret - 2);
-        v += Math.Min(ret, 10);
+        // 5. キャッシュ創出力 (14)
+        double cash = (s.OperatingCF > 0 ? 5 : 0) + (s.FreeCashFlow > 0 ? 5 : 0) + Scale(s.OperatingCashFlowMargin, 2, 20, 4)
+                      + Adj(b.StablePositiveOperatingCf, 0.5, 0) + Adj(b.StablePositiveFreeCf, 0.5, 0);
+        cash = Math.Clamp(cash, 0, 14);
+        list.Add(new("cash", "キャッシュ創出力", cash, 14,
+            $"営業CF {(s.OperatingCF > 0 ? "黒字" : "未黒字")} / フリーCF {(s.FreeCashFlow > 0 ? "黒字" : "未黒字")} / 営業CFマージン {Pct(s.OperatingCashFlowMargin)}"));
 
-        // 割安性・価格妥当性 (10) — PER/PBR/MIX
-        double val = ScaleInverse(s.PER, 8, 35, 4) + ScaleInverse(s.PBR, 0.7, 4, 3) + ScaleInverse(s.MixFactor, 6, 40, 3);
-        if (b.NotOverpriced == YesNoUnknown.No) val = Math.Max(0, val - 2);
-        v += Math.Min(val, 10);
+        // 6. 株主還元の質 (8) — CFが黒字であることを前提に評価(無理な還元は評価しない)
+        double ret = PayoutQuality(s.PayoutRatio) * 4 + Scale(s.ConsecutiveDividendYears, 0, 20, 2);
+        if (s.BuybackAmount > 0 && s.FreeCashFlow > 0) ret += 1.5; // 自社株買いはバフェットが好む(CF黒字が条件)
+        if (s.CumulativeDividend) ret += 0.5;
+        if (s.FreeCashFlow <= 0 || s.PayoutRatio > 90) ret *= 0.5; // CF赤字/過大性向の還元は割引
+        ret += Adj(b.SustainableReturn, 0, -2);
+        ret = Math.Clamp(ret, 0, 8);
+        list.Add(new("return", "株主還元の質", ret, 8,
+            $"配当性向 {Pct(s.PayoutRatio)} / 連続増配 {s.ConsecutiveDividendYears}年 / 自社株買い {(s.BuybackAmount > 0 ? "あり" : "なし")}"));
 
-        // 暴落時保有適性 (5)
-        v += Avg(YesScore(b.WantToBuyOnCrash), YesScore(b.CanWrite10YearReason)) / 100.0 * 5;
+        // 質ゲート: 1〜5(収益性・財務・CF)の充足度。安いだけの不良株に割安加点を与えないため。
+        double qualityMax = 20 + 16 + 12 + 16 + 14;
+        double quality = Math.Clamp((capital + margins + g + fin + cash) / qualityMax, 0, 1);
 
-        return Math.Round(Math.Clamp(v, 0, 100), 0);
+        // 7. 割安性(質ゲート付き) (8)
+        double valRaw = ScaleInverse(s.PER, 8, 30, 3.5) + ScaleInverse(s.PBR, 0.7, 4, 2.5) + ScaleInverse(s.MixFactor, 6, 35, 2);
+        double val = valRaw * quality + Adj(b.NotOverpriced, 0, -1.5);
+        val = Math.Clamp(val, 0, 8);
+        list.Add(new("valuation", "割安性(質ゲート付き)", val, 8,
+            $"PER {s.PER:0.#} / PBR {s.PBR:0.##} / MIX {s.MixFactor:0.#}。割安度を事業の質（{quality * 100:0}%）で調整"));
+
+        // 8. 事業の理解・経営(定性) (6)
+        double qual = Avg(
+            YesScore(b.UnderstandBusiness), YesScore(b.CanExplainEarnings), YesScore(b.DemandIn10Years),
+            YesScore(b.HasCompetitiveAdvantage), YesScore(b.HasEntryBarrier), YesScore(b.TrustManagement),
+            YesScore(b.WantToBuyOnCrash), YesScore(b.CanWrite10YearReason)) / 100.0 * 6;
+        list.Add(new("qualitative", "事業の理解・経営(定性)", qual, 6,
+            "事業理解 / 競争優位 / 参入障壁 / 経営の信頼 / 10年後需要(バフェットチェックの回答)"));
+
+        return list;
     }
 
     /// <summary>買いたい度: 長期適性・再評価期待・バフェット適性・割高感・興味・事業理解・分類。</summary>

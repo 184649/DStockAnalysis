@@ -82,6 +82,8 @@ const COLS = [
   { k: "PBR", label: "PBR", kind: "num", m: "pbr", d: 2 },
   { k: "MixFactor", label: "MIX", kind: "num", m: "mix", d: 1 },
   { k: "ROE", label: "ROE%", kind: "num", m: "roe", d: 1 },
+  { k: "ROA", label: "ROA%", kind: "num", m: "roe", d: 1 },
+  { k: "TotalAssetTurnover", label: "総資産回転率", kind: "num", d: 2 },
   { k: "EPS", label: "EPS", kind: "num", d: 1 },
   { k: "BPS", label: "BPS", kind: "comma" },
   { k: "OperatingMargin", label: "営業利益率%", kind: "num", m: "margin", d: 1 },
@@ -385,6 +387,7 @@ async function openAnalysis(code, refresh = false) {
   state.selected = data.stock;
   state.links = data.links;
   state.lastFetched = data.lastFetched;
+  state.buffett = data.buffett || [];
   renderAnalysisList(document.getElementById("analysisSearch").value);
   renderDetail();
 }
@@ -458,7 +461,8 @@ function catTable(s, fetched, rows) {
 const CAT_VALUATION = [
   ["Price", "株価(円)", "money"], ["MarketCap", "時価総額(百万円)", "money"],
   ["PER", "PER(倍)", "num2"], ["PBR", "PBR(倍)", "num2"], ["MixFactor", "MIX係数", "num1"],
-  ["ROE", "ROE", "pct1"], ["EPS", "EPS(円)", "num1"], ["BPS", "BPS(円)", "money"],
+  ["ROE", "ROE", "pct1"], ["ROA", "ROA", "pct1"], ["TotalAssetTurnover", "総資産回転率(回)", "num2"],
+  ["EPS", "EPS(円)", "num1"], ["BPS", "BPS(円)", "money"],
   ["OperatingMargin", "営業利益率", "pct1"], ["OrdinaryProfitMargin", "経常利益率", "pct1"], ["NetProfitMargin", "純利益率", "pct1"],
 ];
 const CAT_DIVIDEND = [
@@ -532,6 +536,26 @@ function renderDetail() {
       <div class="box"><h3>株価変化</h3>${catTable(s, F, CAT_PRICECHG)}</div>
       <div class="box"><h3>スコア</h3>${catTable(s, F, CAT_SCORES)}</div>
     </div>`;
+  const bd = state.buffett || [];
+  const bdSum = Math.round(bd.reduce((a, c) => a + (c.Earned || 0), 0));
+  const buffettBox = (s.IndicatorsFetched && bd.length) ? `
+    <div class="box">
+      <h3>バフェット採点の根拠 <span class="bd-total ${qClass("buffett", bdSum)}">${bdSum} / 100</span></h3>
+      <div class="desc">ウォーレン・バフェットが重視する観点(資本収益力・利益率=モート・財務健全性・キャッシュ創出力・利益の継続性・株主還元の質・割安性)で独自に採点。
+      安さより<b>事業の質</b>を優先し、借入依存の高ROEや、業績悪化中で見かけ上だけ割安な銘柄(バリュートラップ)には高得点が付かないようにしています。
+      割安性は事業の質に比例して加点が増減します(質ゲート)。定性項目は下の「バフェットチェック」の回答が反映されます。</div>
+      <div class="buffett-bd">
+        ${bd.map(c => {
+          const pct = c.Max ? Math.max(0, Math.min(100, c.Earned / c.Max * 100)) : 0;
+          const q = pct >= 70 ? "good" : pct >= 45 ? "ok" : pct >= 25 ? "caution" : "bad";
+          return `<div class="bd-row">
+            <div class="bd-h"><span>${esc(c.Label)}</span><span class="bd-pts">${c.Earned} / ${c.Max}</span></div>
+            <div class="bd-bar"><div class="bd-fill ${q}" style="width:${pct.toFixed(0)}%"></div></div>
+            <div class="bd-note">${esc(c.Note)}</div>
+          </div>`;
+        }).join("")}
+      </div>
+    </div>` : "";
   el.innerHTML = `
     <div class="head">
       <span class="name">${esc(s.Name)}</span><span class="code">${esc(s.Code)}</span>
@@ -565,6 +589,8 @@ function renderDetail() {
       ${scoreCard("バフェット", s.BuffettScore, "buffett")}
       ${scoreCard("買いたい度", s.WantToBuyScore)}
     </div>
+
+    ${buffettBox}
 
     ${catBlock}
 
@@ -617,8 +643,10 @@ async function saveUserData() {
   const memo = { Classification: document.getElementById("memo_Classification").value };
   for (const [k] of MEMO_FIELDS) memo[k] = document.getElementById("memo_" + k).value;
   const interest = Number(document.getElementById("memo_Interest").value);
-  const updated = await API.saveUser(s.Code, { Memo: memo, BuffettCheck: check, UserInterest: interest });
+  const res = await API.saveUser(s.Code, { Memo: memo, BuffettCheck: check, UserInterest: interest });
+  const updated = res.stock || res; // {stock, buffett}
   state.selected = updated;
+  state.buffett = res.buffett || state.buffett;
   // 一覧キャッシュも更新
   const idx = state.allCache.findIndex(x => x.Code === updated.Code);
   if (idx >= 0) Object.assign(state.allCache[idx], { BuffettScore: updated.BuffettScore, OverallScore: updated.OverallScore });
@@ -706,7 +734,8 @@ function removeCompare(code) { state.compare = state.compare.filter(c => c !== c
 const CMP_ROWS = [
   ["Price", "株価(円)", "comma"], ["MarketCap", "時価総額(百万)", "comma"],
   ["PER", "PER", "num2", "per"], ["PBR", "PBR", "num2", "pbr"], ["MixFactor", "MIX係数", "num1", "mix"],
-  ["ROE", "ROE%", "pct1", "roe"], ["EPS", "EPS(円)", "num1"], ["BPS", "BPS(円)", "comma"],
+  ["ROE", "ROE%", "pct1", "roe"], ["ROA", "ROA%", "pct1", "roe"], ["TotalAssetTurnover", "総資産回転率", "num2"],
+  ["EPS", "EPS(円)", "num1"], ["BPS", "BPS(円)", "comma"],
   ["DividendYield", "配当利回り%", "pct2", "dy"], ["PayoutRatio", "配当性向%", "pct1", "payout"],
   ["Dividend", "1株配当(円)", "num1"], ["TotalYield", "総合利回り%", "pct2", "totalyield"],
   ["EquityRatio", "自己資本比率%", "pct1", "equity"], ["InterestBearingDebtRatio", "有利子負債比率%", "pct1", "debt"],
@@ -839,7 +868,7 @@ async function reloadAll() {
   const all = await API.screen({});
   state.allCache = all.stocks;
   await runScreen();
-  if (state.selected) { const d = await API.stock(state.selected.Code); state.selected = d.stock; state.links = d.links; renderDetail(); }
+  if (state.selected) { const d = await API.stock(state.selected.Code); state.selected = d.stock; state.links = d.links; state.buffett = d.buffett || []; renderDetail(); }
 }
 
 async function init() {

@@ -26,6 +26,8 @@ public class StockSummaryDto
     public double PER { get; set; }
     public double PBR { get; set; }
     public double ROE { get; set; }
+    public double ROA { get; set; }
+    public double TotalAssetTurnover { get; set; }
     public double MixFactor { get; set; }
     public double EPS { get; set; }
     public double BPS { get; set; }
@@ -120,7 +122,8 @@ public class StockSummaryDto
         Code = s.Code, Name = s.Name, Market = s.Market, Sector = s.Sector, Scale = s.Scale, Theme = s.Theme,
         Description = s.Description, FiscalMonth = s.FiscalMonth, IRUrl = s.IRUrl, DataUpdated = s.DataUpdated,
 
-        Price = s.Price, MarketCap = s.MarketCap, PER = s.PER, PBR = s.PBR, ROE = s.ROE, MixFactor = s.MixFactor,
+        Price = s.Price, MarketCap = s.MarketCap, PER = s.PER, PBR = s.PBR, ROE = s.ROE,
+        ROA = s.ROA, TotalAssetTurnover = s.TotalAssetTurnover, MixFactor = s.MixFactor,
         EPS = s.EPS, BPS = s.BPS, OperatingMargin = s.OperatingMargin, OrdinaryProfitMargin = s.OrdinaryProfitMargin,
         NetProfitMargin = s.NetProfitMargin,
 

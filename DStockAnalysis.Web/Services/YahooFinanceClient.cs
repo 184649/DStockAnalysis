@@ -47,9 +47,59 @@ public class YahooFinanceClient
         }
 
         // 株価は chart API(認証不要)で確実に取得し上書きする(現在値)。
-        var price = await GetChartPriceAsync(code, ct);
-        if (price != null) d["Price"] = price;
+        // 併せて直近3ヶ月の株価変化率・平均株価も算出する(株価変化カテゴリ)。
+        try
+        {
+            var statsJson = await GetChartJsonAsync(code, "3mo", ct);
+            if (statsJson != null)
+                foreach (var kv in ParseChartStats(statsJson)) d[kv.Key] = kv.Value;
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            _log.LogInformation("[yahoo] chart stats {Code}: {Msg}", code, e.Message);
+        }
+        if (!d.ContainsKey("Price"))
+        {
+            var price = await GetChartPriceAsync(code, ct);
+            if (price != null) d["Price"] = price;
+        }
 
+        return d;
+    }
+
+    /// <summary>chart API の生 JSON を取得する(range 指定)。crumb 不要。</summary>
+    private async Task<string?> GetChartJsonAsync(string code, string range, CancellationToken ct)
+    {
+        var url = $"https://query1.finance.yahoo.com/v8/finance/chart/{code}.T?interval=1d&range={range}";
+        using var res = await _http.GetAsync(url, ct);
+        if (!res.IsSuccessStatusCode) return null;
+        return await res.Content.ReadAsStringAsync(ct);
+    }
+
+    /// <summary>chart JSON(range=3mo)から 現在値・3ヶ月株価変化率・3ヶ月平均株価・対平均変化率を算出する。
+    /// テスト可能な純粋関数(外部アクセスなし)。</summary>
+    public static Dictionary<string, string> ParseChartStats(string json)
+    {
+        var d = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        using var doc = JsonDocument.Parse(json);
+        var result = doc.RootElement.GetProperty("chart").GetProperty("result");
+        if (result.ValueKind != JsonValueKind.Array || result.GetArrayLength() == 0) return d;
+        var r0 = result[0];
+        if (!r0.TryGetProperty("indicators", out var ind) ||
+            !ind.TryGetProperty("quote", out var q) || q.ValueKind != JsonValueKind.Array || q.GetArrayLength() == 0)
+            return d;
+        if (!q[0].TryGetProperty("close", out var closeArr) || closeArr.ValueKind != JsonValueKind.Array) return d;
+
+        var closes = new List<double>();
+        foreach (var c in closeArr.EnumerateArray())
+            if (c.ValueKind == JsonValueKind.Number) closes.Add(c.GetDouble());
+        if (closes.Count < 2) return d;
+
+        double first = closes[0], last = closes[^1], avg = closes.Average();
+        void P(string k, double v) => d[k] = Math.Round(v, 2).ToString(CultureInfo.InvariantCulture);
+        if (first > 0) P("StockPriceChange3M", (last - first) / first * 100);          // 3ヶ月の騰落率
+        if (avg > 0) P("AverageStockPriceChange3M", (last - avg) / avg * 100);          // 直近 vs 3ヶ月平均
+        P("AveragePrice3M", avg);                                                       // 3ヶ月平均株価
         return d;
     }
 

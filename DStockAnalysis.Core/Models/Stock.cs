@@ -27,6 +27,8 @@ public class Stock : ObservableObject
     public double PER { get; set; }
     public double PBR { get; set; }
     public double ROE { get; set; }                 // %
+    public double ROA { get; set; }                 // 総資産利益率 %
+    public double TotalAssetTurnover { get; set; }  // 総資産回転率 (回)
     public double MixFactor { get; set; }           // MIX係数 (PER×PBR)
     public double EPS { get; set; }
     public double BPS { get; set; }
@@ -179,6 +181,8 @@ public class Stock : ObservableObject
         if (H("PER")) PER = src.PER;
         if (H("PBR")) PBR = src.PBR;
         if (H("ROE")) ROE = src.ROE;
+        if (H("ROA")) ROA = src.ROA;
+        if (H("TotalAssetTurnover")) TotalAssetTurnover = src.TotalAssetTurnover;
         if (H("MixFactor")) MixFactor = src.MixFactor;
         if (H("EPS")) EPS = src.EPS;
         if (H("BPS")) BPS = src.BPS;
@@ -248,7 +252,7 @@ public class Stock : ObservableObject
     /// 擬似値を持たない「未取得」状態を作るために使う。基本情報(コード・銘柄名・市場等)は保持。</summary>
     public void ClearIndicators()
     {
-        Price = MarketCap = PER = PBR = ROE = MixFactor = EPS = BPS = 0;
+        Price = MarketCap = PER = PBR = ROE = ROA = TotalAssetTurnover = MixFactor = EPS = BPS = 0;
         OperatingMargin = OrdinaryProfitMargin = NetProfitMargin = 0;
         DividendYield = PayoutRatio = Dividend = DividendRemainingYears = BuybackAmount = 0;
         DividendTrend = ShareholderReturnPolicy = "";

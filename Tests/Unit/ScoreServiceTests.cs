@@ -86,6 +86,54 @@ public class ScoreServiceTests
         Assert.True(s.OverallScore >= 60);
     }
 
+    [Fact] // UT-SC-08: バフェットスコアは内訳の合計に一致する(透明性)
+    public void BuffettScore_EqualsBreakdownSum()
+    {
+        var s = TestData.Good();
+        _svc.Recalculate(s);
+        var breakdown = _svc.BuffettBreakdown(s);
+        var sum = Math.Round(Math.Clamp(breakdown.Sum(c => c.Earned), 0, 100), 0);
+        Assert.Equal(s.BuffettScore, sum);
+        // 各内訳は 0..配点 の範囲に収まる
+        foreach (var c in breakdown) Assert.InRange(c.Earned, 0, c.Max);
+        Assert.Equal(100, breakdown.Sum(c => c.Max)); // 満点合計100
+    }
+
+    [Fact] // UT-SC-09: 質ゲート — 安いだけの不良株は割安加点が抑制される(バリュートラップ回避)
+    public void Buffett_Valuation_IsGatedByQuality()
+    {
+        // 同じ「割安」な PER/PBR でも、事業の質が低いと割安加点が小さくなる
+        var cheapJunk = new Stock
+        {
+            Code = "9991", PER = 6, PBR = 0.5, MixFactor = 3,
+            ROE = 2, ROA = 1, OperatingMargin = 1, NetProfitMargin = 1, EquityRatio = 18,
+            InterestBearingDebtRatio = 180, OperatingCF = -1000, FreeCashFlow = -5000,
+            RevenueGrowthRate = -8, NetProfitGrowthRate = -15, EpsGrowthRate = -15
+        };
+        var cheapQuality = new Stock
+        {
+            Code = "9992", PER = 6, PBR = 0.5, MixFactor = 3,
+            ROE = 18, ROA = 10, OperatingMargin = 20, NetProfitMargin = 14, EquityRatio = 65,
+            InterestBearingDebtRatio = 10, OperatingCF = 200000, FreeCashFlow = 150000,
+            OperatingCashFlowMargin = 18, RevenueGrowthRate = 8, NetProfitGrowthRate = 10, EpsGrowthRate = 10
+        };
+        double Val(Stock s) => _svc.BuffettBreakdown(s).First(c => c.Key == "valuation").Earned;
+        Assert.True(Val(cheapQuality) > Val(cheapJunk),
+            $"quality={Val(cheapQuality)} junk={Val(cheapJunk)}");
+        // 総合でも質の高い割安株が上回る
+        _svc.Recalculate(cheapJunk); _svc.Recalculate(cheapQuality);
+        Assert.True(cheapQuality.BuffettScore > cheapJunk.BuffettScore);
+    }
+
+    [Fact] // UT-SC-10: 同じ ROE でも自己資本比率が低い(借入依存)と資本収益力が下がる
+    public void Buffett_Capital_PenalizesLeveragedRoe()
+    {
+        var sound = new Stock { Code = "1", ROE = 15, ROA = 8, EquityRatio = 60 };
+        var levered = new Stock { Code = "2", ROE = 15, ROA = 4, EquityRatio = 20 };
+        double Cap(Stock s) => _svc.BuffettBreakdown(s).First(c => c.Key == "capital").Earned;
+        Assert.True(Cap(sound) > Cap(levered), $"sound={Cap(sound)} levered={Cap(levered)}");
+    }
+
     private static List<Action<YesNoUnknown>> YesSetters(BuffettCheck b) => new()
     {
         v => b.CanExplainEarnings = v, v => b.UnderstandBusiness = v, v => b.DemandIn10Years = v,

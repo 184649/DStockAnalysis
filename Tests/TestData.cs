@@ -10,7 +10,7 @@ internal static class TestData
     {
         Code = "0001", Name = "テスト優良", Market = "東証プライム", Sector = "情報・通信業", Scale = "大型",
         Theme = "AI", Description = "テスト",
-        Price = 3000, MarketCap = 1000000, PER = 12, PBR = 1.2, ROE = 15, MixFactor = 14.4,
+        Price = 3000, MarketCap = 1000000, PER = 12, PBR = 1.2, ROE = 15, ROA = 9, MixFactor = 14.4,
         EPS = 250, BPS = 2500, OperatingMargin = 18, OrdinaryProfitMargin = 18, NetProfitMargin = 12,
         DividendYield = 3.2, PayoutRatio = 40, Dividend = 100, ConsecutiveDividendYears = 10,
         DividendCutCount = 0, NonDividendCutYears = 12, DividendRemainingYears = 8, BuybackAmount = 50000,
@@ -32,7 +32,7 @@ internal static class TestData
     public static Stock Weak() => new()
     {
         Code = "0002", Name = "テスト不振", Market = "東証スタンダード", Sector = "小売業", Scale = "中型",
-        Price = 500, MarketCap = 50000, PER = 40, PBR = 0.6, ROE = 2, MixFactor = 24,
+        Price = 500, MarketCap = 50000, PER = 40, PBR = 0.6, ROE = 2, ROA = 1, MixFactor = 24,
         EPS = 12, OperatingMargin = 2, NetProfitMargin = 1.5,
         DividendYield = 5.0, PayoutRatio = 95, Dividend = 11, ConsecutiveDividendYears = 0,
         DividendCutCount = 2, NonDividendCutYears = 1, DividendRemainingYears = 0,
