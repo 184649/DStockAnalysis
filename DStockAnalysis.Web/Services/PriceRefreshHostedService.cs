@@ -76,7 +76,45 @@ public class PriceRefreshHostedService : BackgroundService
         }
         _store.Persist();
         _log.LogInformation("一覧の指標を一括取得: 暫定 {Prov} / 株価のみ {Price} / 全 {Total}", provisional, priceOnly, codes.Count);
+
+        // 続けて財務指標(ROE/ROA/利益率/CF/成長率)を Yahoo から概算で一括取得し、一覧にスコアまで表示する
+        // (株探の会社予想・通期は個別オープン/巡回で精緻化)。
+        await EnrichFundamentalsAsync(int.MaxValue, ct);
         return provisional + priceOnly;
+    }
+
+    /// <summary>財務指標が無い銘柄(未取得・暫定)に Yahoo の財務概算(ROE/ROA/利益率/CF/成長率/有利子負債)を
+    /// 取得して反映し、スコアを算出する。max で1回の処理件数を制限できる。
+    /// 過負荷/スロットリングを避けるため、小さなチャンク・低並行で処理し、チャンクごとに保存する
+    /// (途中で 0 件続き=スロットリングの可能性があれば長めに待機)。</summary>
+    public async Task<int> EnrichFundamentalsAsync(int max, CancellationToken ct)
+    {
+        var codes = _store.CodesNeedingFundamentals();
+        if (codes.Count == 0) return 0;
+        if (max < codes.Count) codes = codes.Take(max).ToList();
+
+        const int chunk = 200;
+        int applied = 0, emptyStreak = 0;
+        for (int i = 0; i < codes.Count && !ct.IsCancellationRequested; i += chunk)
+        {
+            var batch = codes.Skip(i).Take(chunk).ToList();
+            var data = await _yahoo.GetSummaryBatchAsync(batch, concurrency: 3, ct);
+
+            int got = 0;
+            foreach (var (code, dict) in data)
+                if ((dict.ContainsKey("ROE") || dict.ContainsKey("ROA") || dict.ContainsKey("OperatingMargin"))
+                    && _store.ApplyFetched(new[] { (code, dict) }, save: false, provisional: false) > 0) { applied++; got++; }
+
+            _store.Persist(); // チャンクごとに保存(途中で止まっても成果が残る)
+            _log.LogInformation("財務概算(Yahoo) {Done}/{Total} 反映 (本チャンク {Got})",
+                Math.Min(i + chunk, codes.Count), codes.Count, got);
+
+            // 0件が続く=スロットリング/データ無しの可能性。長めに待って優しく継続。
+            if (got == 0) { if (++emptyStreak >= 3) await DelaySafe(TimeSpan.FromSeconds(60), ct); else await DelaySafe(TimeSpan.FromSeconds(15), ct); }
+            else { emptyStreak = 0; await DelaySafe(TimeSpan.FromSeconds(1), ct); }
+        }
+        _log.LogInformation("財務概算を反映(Yahoo): 計 {Applied} 件 / 対象 {Total}", applied, codes.Count);
+        return applied;
     }
 
     private static async Task DelaySafe(TimeSpan span, CancellationToken ct)

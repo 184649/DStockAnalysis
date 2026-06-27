@@ -230,6 +230,43 @@ public class YahooFinanceClient
         return null;
     }
 
+    /// <summary>複数銘柄の財務指標(ROE/ROA/利益率/CF/成長率/有利子負債)を quoteSummary から
+    /// 並行取得する(一覧を素早く埋める概算値)。robots 不要。失敗銘柄はスキップする。
+    /// concurrency で同時実行数を制限し、Yahoo への過負荷を避ける。</summary>
+    public async Task<Dictionary<string, Dictionary<string, string>>> GetSummaryBatchAsync(
+        IReadOnlyList<string> codes, int concurrency, CancellationToken ct, Action<int>? onProgress = null)
+    {
+        var result = new System.Collections.Concurrent.ConcurrentDictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+        using var sem = new SemaphoreSlim(Math.Max(1, concurrency));
+        int done = 0;
+        var tasks = codes.Select(async code =>
+        {
+            await sem.WaitAsync(ct);
+            try
+            {
+                var json = await GetSummaryAsync(code, ct);
+                if (json != null)
+                {
+                    var d = ParseQuoteSummary(json);
+                    // 財務指標(価格以外)が取れた場合のみ採用する
+                    d.Remove("Price");
+                    if (d.Count > 0) result[code] = d;
+                }
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                _log.LogDebug("[yahoo] summary batch {Code}: {Msg}", code, e.Message);
+            }
+            finally
+            {
+                sem.Release();
+                onProgress?.Invoke(Interlocked.Increment(ref done));
+            }
+        });
+        await Task.WhenAll(tasks);
+        return new Dictionary<string, Dictionary<string, string>>(result, StringComparer.OrdinalIgnoreCase);
+    }
+
     private async Task<string?> GetSummaryAsync(string code, CancellationToken ct)
     {
         for (int attempt = 0; attempt < 2; attempt++)
@@ -293,11 +330,18 @@ public class YahooFinanceClient
         // 株価は株探(現在値)を優先するため、ここでは予備として保持(株探で取れない場合のフォールバック)
         Put("Price", Raw("price", "regularMarketPrice"));
 
-        // 収益性・財務・CF のみ Yahoo から採用する。
+        // 収益性・財務・CF・成長性を Yahoo から採用する(一覧を素早く埋める概算値。
+        // 個別分析を開く/巡回取得で株探の会社予想・通期実績に精緻化される)。
         // バリュエーション(PER/PBR/配当利回り/EPS)は日本の会社予想ベース(株探)を採用するため Yahoo からは取らない。
         Put("ROE", Raw("financialData", "returnOnEquity") is { } roe ? roe * 100 : null);
+        Put("ROA", Raw("financialData", "returnOnAssets") is { } roa ? roa * 100 : null);
+        Put("OperatingMargin", Raw("financialData", "operatingMargins") is { } om ? om * 100 : null);
         Put("NetProfitMargin", Raw("financialData", "profitMargins") is { } pm ? pm * 100 : null);
         Put("InterestBearingDebtRatio", Raw("financialData", "debtToEquity")); // 有利子負債/自己資本(%)
+
+        // 成長率(Yahooは直近の前年同期比。通期会社予想とは異なるため概算)
+        if (Raw("financialData", "revenueGrowth") is { } rg) { Put("RevenueGrowthRate", rg * 100); Put("RevenueGrowth1Y", rg * 100); }
+        if (Raw("financialData", "earningsGrowth") is { } eg) { Put("NetProfitGrowthRate", eg * 100); Put("EpsGrowthRate", eg * 100); }
 
         var ocf = Raw("financialData", "operatingCashflow");
         var fcf = Raw("financialData", "freeCashflow");
@@ -305,7 +349,7 @@ public class YahooFinanceClient
         if (ocf.HasValue) Put("OperatingCF", ocf.Value / 1_000_000.0, 0);   // 円→百万円
         if (fcf.HasValue) Put("FreeCashFlow", fcf.Value / 1_000_000.0, 0);
         if (ocf is > 0 && rev is > 0) Put("OperatingCashFlowMargin", ocf.Value / rev.Value * 100);
-        // 採用しない: 営業利益率(日本株で乖離)、増収率/利益成長率(Yahooは四半期YoYで通期と異なる)、時価総額(過少)。
+        // 採用しない: 時価総額(過少表示のため。会社予想ベースで株探から取得)。
 
         return d;
     }

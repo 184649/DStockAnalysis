@@ -343,6 +343,13 @@ public class StockStore
         lock (_lock) return _stocks.Where(s => s.IndicatorsFetched).Select(s => s.Code).ToList();
     }
 
+    /// <summary>財務指標(スコア算出に必要)がまだ無い銘柄(未取得 or 暫定)のコード一覧。
+    /// Yahoo 財務一括取得(概算)の対象。</summary>
+    public IReadOnlyList<string> CodesNeedingFundamentals()
+    {
+        lock (_lock) return _stocks.Where(s => !s.IndicatorsFetched || s.Provisional).Select(s => s.Code).ToList();
+    }
+
     // 候補値(コンボ用)
     public List<string> Sectors() { lock (_lock) return _stocks.Select(s => s.Sector).Where(x => !string.IsNullOrEmpty(x)).Distinct().OrderBy(x => x).ToList(); }
     public List<string> Markets() { lock (_lock) return _stocks.Select(s => s.Market).Where(x => !string.IsNullOrEmpty(x)).Distinct().OrderBy(x => x).ToList(); }

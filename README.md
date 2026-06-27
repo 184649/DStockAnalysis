@@ -270,6 +270,9 @@ sudo systemctl restart dstock
 | `MaxAgeDays` | `6` | この日数以内に取得済みの銘柄は再取得しない |
 
 - 手動で株価を一括更新: `POST /api/admin/price-refresh`
+- **財務指標を一覧に一括反映(概算・高速)**: `POST /api/admin/enrich`(`?max=N` で件数制限)
+  Yahoo から ROE/ROA/利益率/CF/成長率/有利子負債を取得し、一覧に**指標とバフェットスコア**を素早く表示します
+  (実測: 300件 約9秒)。`PriceRefresh` の一環として起動時にも自動実行されます。会社予想・通期実績は個別オープン/巡回で精緻化。
 - 取得状況の確認: `GET /api/admin/fetch/status`
 
 ### 暫定取得 と 実取得(一覧の表示について)
