@@ -43,29 +43,30 @@ public class IndicatorFetchService : IIndicatorFetcher
     {
         var row = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-        // 1) 株探(会社予想ベース) を最優先: 現在値/PER/PBR/配当利回り/時価総額。
-        //    日本の投資家が実際に見る「会社予想」値に揃える(Yahoo の trailing 値とは異なる)。
-        await MergeFrom(row, code, $"https://kabutan.jp/stock/?code={code}", ParseKabutan, ct);
+        // 速度改善: 4ソース(株探×2・Yahoo・IRBANK×2)を並行取得し、待ち時間を「合計」から「最大」へ短縮する。
+        var mainTask = FetchAsync($"https://kabutan.jp/stock/?code={code}", ct);          // 会社予想 PER/PBR/利回り/時価総額
+        var finTask = FetchAsync($"https://kabutan.jp/stock/finance?code={code}", ct);    // 通期実績 財務・配当履歴
+        var yahooTask = _yahoo.FetchAsync(code, ct);                                       // 補完 + 現在値
+        var divTask = FetchAsync($"https://irbank.net/{code}/dividend", ct);              // 自社株買い(自己株式の取得)
+        var irTask = FetchAsync($"https://irbank.net/{code}", ct);                        // 自己資本比率(フォールバック)
+        await Task.WhenAll(mainTask, finTask, yahooTask, divTask, irTask);
 
-        // 2) 株探 業績・財務ページ(通期実績): 利益率/ROE/ROA/総資産回転率/各CF/自己資本比率/
-        //    有利子負債比率/各成長率。日本基準の通期値を Yahoo の TTM より優先するため先に取得する。
-        await MergeFrom(row, code, $"https://kabutan.jp/stock/finance?code={code}", ParseKabutanFinance, ct);
-
-        // 3) Yahoo!ファイナンス(構造化JSON): 株探で取れなかった指標の補完 + 現在値。
-        foreach (var kv in await _yahoo.FetchAsync(code, ct))
+        // 優先順位順にマージ(先に入れた値を優先。会社予想・通期実績 > Yahoo > IRBANK)
+        MergeParsed(row, mainTask.Result, ParseKabutan, code);
+        MergeParsed(row, finTask.Result, ParseKabutanFinance, code);
+        foreach (var kv in yahooTask.Result)
             if (!row.ContainsKey(kv.Key)) row[kv.Key] = kv.Value;
-
-        // 4) IR BANK: 自己資本比率(株探・Yahoo で取れない場合のフォールバック)。
-        await MergeFrom(row, code, $"https://irbank.net/{code}", ParseIrBank, ct);
+        MergeParsed(row, divTask.Result, ParseIrBankDividend, code);
+        MergeParsed(row, irTask.Result, ParseIrBank, code);
 
         Derive(row); // 株探の株価/PER/PBR/利回りから EPS・BPS・1株配当・配当性向・MIX係数を算出
         return row;
     }
 
-    private async Task MergeFrom(Dictionary<string, string> row, string code, string url,
-        Func<string, string, Dictionary<string, string>> parse, CancellationToken ct)
+    /// <summary>取得済みHTMLをパースし、未設定の列だけ row へマージする(先勝ち)。</summary>
+    private static void MergeParsed(Dictionary<string, string> row, string? html,
+        Func<string, string, Dictionary<string, string>> parse, string code)
     {
-        var html = await FetchAsync(url, ct);
         if (html == null) return;
         foreach (var kv in parse(html, code))
             if (!row.ContainsKey(kv.Key)) row[kv.Key] = kv.Value;
@@ -172,6 +173,37 @@ public class IndicatorFetchService : IIndicatorFetcher
         // 株探に無い指標のため IR BANK から取得する(他指標は会社予想ベースで揃えるため取らない)。
         Put(d, "EquityRatio", Find(html, @"自己資本比率[\s\S]{0,200}?width:\s*([0-9]+\.?[0-9]*)\s*%"));
         return d;
+    }
+
+    /// <summary>IR BANK 配当ページ(/{code}/dividend)から「自己株式の取得」(自社株買い)の直近額を取得する。
+    /// 値は「N兆M億K万」表記 → 百万円へ換算。株探に無いため IRBANK から補う。</summary>
+    public static Dictionary<string, string> ParseIrBankDividend(string html, string code)
+    {
+        var d = new Dictionary<string, string>();
+        // <h2>自己株式の取得</h2> を含む g_ ブロック内の最後の <span class="text">値</span> が直近年度
+        var block = Regex.Match(html, @"自己株式の取得</h2>([\s\S]*?)</dl>");
+        if (block.Success)
+        {
+            var vals = Regex.Matches(block.Groups[1].Value, @"<span class=""text"">([^<]+)</span>");
+            if (vals.Count > 0)
+            {
+                var latest = vals[^1].Groups[1].Value;
+                var mil = JpYenToMillion(latest);
+                if (mil is > 0) d["BuybackAmount"] = Math.Round(mil.Value).ToString(CultureInfo.InvariantCulture);
+            }
+        }
+        return d;
+    }
+
+    /// <summary>「1兆2345億6789万」等の日本語表記を百万円に換算する。</summary>
+    private static double? JpYenToMillion(string s)
+    {
+        s = s.Trim();
+        var m = Regex.Match(s, @"^(?:(\d+)兆)?(?:(\d+)億)?(?:(\d+)万)?(?:(\d+))?");
+        if (!m.Success) return null;
+        double Y(int g) => m.Groups[g].Success && double.TryParse(m.Groups[g].Value, out var v) ? v : 0;
+        double yen = Y(1) * 1_0000_0000_0000.0 + Y(2) * 1_0000_0000.0 + Y(3) * 1_0000.0 + Y(4);
+        return yen > 0 ? yen / 1_000_000.0 : null;
     }
 
     public static Dictionary<string, string> ParseKabutan(string html, string code)
