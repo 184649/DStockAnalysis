@@ -92,6 +92,31 @@ public class FetchCoordinatorTests : IDisposable
         Assert.Equal(2, fake.Calls);
     }
 
+    [Fact] // 旧スキーマ(指標が少ない頃)で取得済みの銘柄は「未更新」とみなし再取得する
+    public async Task FetchOne_OldSchemaCache_IsRefetched()
+    {
+        // 旧形式の fetch_state.json(コード→日時のみ。スキーマ版が無い=v1扱い)を最近の日時で用意
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["DataDir"] = _dir }).Build();
+        var store = new StockStore(config, NullLogger<StockStore>.Instance);
+        store.Initialize();
+        var code = store.AllCodes().First();
+        var stateFile = Path.Combine(_dir, "fetch_state.json");
+        File.WriteAllText(stateFile,
+            $"{{\"{code}\":\"{DateTime.UtcNow:o}\"}}"); // 旧形式・本日取得
+
+        var fake = new FakeFetcher(new() { ["OperatingMargin"] = "12.0" });
+        var coord = new FetchCoordinator(store, fake, new FetchOptions { MaxAgeDays = 6 },
+            NullLogger<FetchCoordinator>.Instance);
+
+        // 日時は新しくても旧スキーマなので未更新扱い → 再取得される
+        Assert.False(coord.IsFresh(code));
+        bool updated = await coord.FetchOneAsync(code, force: false, CancellationToken.None);
+        Assert.True(updated);
+        Assert.Equal(1, fake.Calls);
+        Assert.True(coord.IsFresh(code)); // 取得後は現行スキーマで fresh
+    }
+
     [Fact]
     public async Task FetchOne_EmptyResult_DoesNotMarkFresh()
     {

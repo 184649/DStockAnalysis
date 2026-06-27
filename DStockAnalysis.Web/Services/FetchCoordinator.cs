@@ -16,8 +16,15 @@ public class FetchCoordinator
     private readonly ILogger<FetchCoordinator> _log;
     private readonly string _cacheFile;
     private readonly object _cacheLock = new();
-    private readonly Dictionary<string, DateTime> _cache;
+    private readonly Dictionary<string, CacheEntry> _cache;
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _inflight = new();
+
+    /// <summary>取得指標スキーマのバージョン。取得する指標を増やしたら上げる。
+    /// これより古いバージョンで取得した銘柄は「未更新」とみなし、開いた時に自動で再取得する
+    /// (例: 営業利益率・ROA・各CF・成長率を株探財務ページから取得するようにした v2)。</summary>
+    private const int SchemaVersion = 2;
+
+    private class CacheEntry { public DateTime At { get; set; } public int Ver { get; set; } }
 
     public FetchCoordinator(StockStore store, IIndicatorFetcher fetcher, FetchOptions opt,
         ILogger<FetchCoordinator> log)
@@ -30,16 +37,18 @@ public class FetchCoordinator
         _cache = LoadCache();
     }
 
-    /// <summary>MaxAgeDays 以内に取得済みか。</summary>
+    /// <summary>MaxAgeDays 以内かつ現行スキーマで取得済みか。
+    /// 古いスキーマ(指標が少ない)で取得した銘柄は false=要再取得とする。</summary>
     public bool IsFresh(string code)
     {
         lock (_cacheLock)
-            return _cache.TryGetValue(code, out var t) && (DateTime.UtcNow - t).TotalDays < _opt.MaxAgeDays;
+            return _cache.TryGetValue(code, out var e) && e.Ver >= SchemaVersion
+                   && (DateTime.UtcNow - e.At).TotalDays < _opt.MaxAgeDays;
     }
 
     public DateTime? LastFetched(string code)
     {
-        lock (_cacheLock) return _cache.TryGetValue(code, out var t) ? t : null;
+        lock (_cacheLock) return _cache.TryGetValue(code, out var e) ? e.At : null;
     }
 
     /// <summary>
@@ -62,7 +71,7 @@ public class FetchCoordinator
             if (values.Count > 0)
             {
                 updated = _store.ApplyFetched(new[] { (code, values) }, save) > 0;
-                lock (_cacheLock) { _cache[code] = DateTime.UtcNow; SaveCacheNoLock(); }
+                lock (_cacheLock) { _cache[code] = new CacheEntry { At = DateTime.UtcNow, Ver = SchemaVersion }; SaveCacheNoLock(); }
             }
             return updated;
         }
@@ -72,13 +81,23 @@ public class FetchCoordinator
         }
     }
 
-    private Dictionary<string, DateTime> LoadCache()
+    private Dictionary<string, CacheEntry> LoadCache()
     {
         try
         {
-            if (File.Exists(_cacheFile))
-                return JsonSerializer.Deserialize<Dictionary<string, DateTime>>(File.ReadAllText(_cacheFile))
-                       ?? new();
+            if (!File.Exists(_cacheFile)) return new();
+            var text = File.ReadAllText(_cacheFile);
+            // 新形式: { "code": { "At": ..., "Ver": n } }
+            try
+            {
+                var v2 = JsonSerializer.Deserialize<Dictionary<string, CacheEntry>>(text);
+                if (v2 != null && v2.Values.All(e => e != null)) return v2!;
+            }
+            catch { }
+            // 旧形式: { "code": "2026-06-25T..." } → Ver=1 として読み込む(現行スキーマより古い=要再取得)
+            var v1 = JsonSerializer.Deserialize<Dictionary<string, DateTime>>(text);
+            if (v1 != null)
+                return v1.ToDictionary(kv => kv.Key, kv => new CacheEntry { At = kv.Value, Ver = 1 });
         }
         catch { }
         return new();
