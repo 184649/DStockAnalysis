@@ -27,4 +27,11 @@
     </None>
   </ItemGroup>
 
+  <!-- 取得パーサ検証用の保存済み HTML(オフライン・外部アクセスなし) -->
+  <ItemGroup>
+    <None Include="Fixtures\*.html" Link="Fixtures\%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

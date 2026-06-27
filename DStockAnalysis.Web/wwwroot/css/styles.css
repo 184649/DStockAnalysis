@@ -154,6 +154,20 @@ table.grid tbody tr { cursor: pointer; }
 .detail .desc { color: var(--sub); margin: 6px 0; }
 .links a { color: var(--accent-solid, #29B6F6); margin-right: 12px; font-size: 12px; }
 
+/* バフェット採点の根拠(内訳) */
+.bd-total { font-size: 13px; font-weight: 700; padding: 1px 8px; border-radius: 4px; color: #fff; margin-left: 6px; }
+.bd-total.good { background: var(--good-solid); } .bd-total.ok { background: var(--ok-solid); color:#03283a; }
+.bd-total.caution { background: var(--caution-solid); color:#3a2600; } .bd-total.bad { background: var(--bad-solid); }
+.buffett-bd { display: grid; gap: 10px; margin-top: 8px; }
+.bd-row { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; }
+.bd-h { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; }
+.bd-h .bd-pts { color: var(--sub); font-weight: 600; }
+.bd-bar { height: 7px; background: var(--grid); border-radius: 4px; overflow: hidden; margin: 5px 0; }
+.bd-fill { height: 100%; border-radius: 4px; }
+.bd-fill.good { background: var(--good-solid); } .bd-fill.ok { background: var(--ok-solid); }
+.bd-fill.caution { background: var(--caution-solid); } .bd-fill.bad { background: var(--bad-solid); }
+.bd-note { font-size: 11px; color: var(--sub); margin-top: 2px; }
+
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; margin: 12px 0; }
 .card { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; }
 .card .k { font-size: 11px; color: var(--sub); }

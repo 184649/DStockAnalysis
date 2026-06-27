@@ -19,7 +19,7 @@ public class DtoMappingTests
             Code = "7203", Name = "トヨタ", Market = "東証プライム", Sector = "輸送用機器", Scale = "大型",
             Theme = "EV", Description = "自動車大手", FiscalMonth = "3月", IRUrl = "https://example/ir",
             // バリュエーション
-            Price = 2700, MarketCap = 14000000, PER = 10.5, PBR = 1.1, ROE = 12.3, MixFactor = 11.55,
+            Price = 2700, MarketCap = 14000000, PER = 10.5, PBR = 1.1, ROE = 12.3, ROA = 8.4, MixFactor = 11.55,
             EPS = 250.4, BPS = 3000, OperatingMargin = 8.5, OrdinaryProfitMargin = 9.1, NetProfitMargin = 6.2,
             // 配当・還元
             DividendYield = 3.2, PayoutRatio = 35.0, Dividend = 80, DividendTrend = "安定",
@@ -54,6 +54,7 @@ public class DtoMappingTests
         Assert.Equal("3月", d.FiscalMonth);
         Assert.Equal("https://example/ir", d.IRUrl);
         Assert.Equal(3000, d.BPS);
+        Assert.Equal(8.4, d.ROA);
         Assert.Equal(9.1, d.OrdinaryProfitMargin);
         Assert.Equal(80, d.Dividend);
         Assert.Equal("安定", d.DividendTrend);

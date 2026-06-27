@@ -106,7 +106,13 @@ app.MapGet("/api/stocks/{code}", async (string code, bool? refresh,
         catch { /* 取得失敗時は既存値のまま返す */ }
     }
 
-    return Results.Ok(new { stock = s, links = store.Links(code), lastFetched = coord.LastFetched(code) });
+    return Results.Ok(new
+    {
+        stock = s,
+        links = store.Links(code),
+        lastFetched = coord.LastFetched(code),
+        buffett = store.BuffettBreakdown(s) // バフェットスコアの内訳(根拠の明細)
+    });
 });
 
 // ===== 比較(複数銘柄の詳細) =====
@@ -120,7 +126,7 @@ app.MapGet("/api/compare", (string codes, StockStore store) =>
 app.MapPost("/api/stocks/{code}/userdata", (string code, UserDataRequest req, StockStore store) =>
 {
     var s = store.SaveUserData(code, req.Memo, req.BuffettCheck, req.UserInterest);
-    return s == null ? Results.NotFound() : Results.Ok(s);
+    return s == null ? Results.NotFound() : Results.Ok(new { stock = s, buffett = store.BuffettBreakdown(s) });
 });
 
 // ===== CSV 取込(実データ列単位マージ) =====

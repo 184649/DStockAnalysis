@@ -84,4 +84,15 @@ public class YahooFinanceClientTests
         var d = YahooFinanceClient.ParseQuoteSummary(@"{""quoteSummary"":{""result"":[],""error"":null}}");
         Assert.Empty(d);
     }
+
+    [Fact] // chart(3mo)から 3ヶ月変化率・平均株価を算出(株価変化カテゴリ)
+    public void ParseChartStats_ComputesThreeMonthChange()
+    {
+        var json = @"{""chart"":{""result"":[{""meta"":{""regularMarketPrice"":120.0},
+            ""indicators"":{""quote"":[{""close"":[100.0,110.0,null,120.0]}]}}],""error"":null}}";
+        var d = YahooFinanceClient.ParseChartStats(json);
+        Assert.Equal("20", d["StockPriceChange3M"]);       // (120-100)/100×100
+        Assert.Equal("110", d["AveragePrice3M"]);          // 平均(100,110,120)
+        Assert.Equal("9.09", d["AverageStockPriceChange3M"]); // (120-110)/110×100
+    }
 }

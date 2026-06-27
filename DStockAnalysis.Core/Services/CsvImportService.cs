@@ -74,6 +74,8 @@ public class CsvImportService
                 PER = D("PER"),
                 PBR = D("PBR"),
                 ROE = D("ROE"),
+                ROA = D("ROA"),
+                TotalAssetTurnover = D("TotalAssetTurnover"),
                 MixFactor = D("MixFactor"),
                 EPS = D("EPS"),
                 BPS = D("BPS"),

@@ -168,7 +168,7 @@ public class WebApiTests : IClassFixture<WebApiTests.ApiFactory>
         var j = await JsonOf(await _client.PostAsJsonAsync("/api/screen", new { }));
         var first = j.GetProperty("stocks")[0];
         // 追加した指標プロパティが JSON に存在する(値の有無に関わらずフィールドがある)
-        foreach (var prop in new[] { "BPS", "Dividend", "OperatingCF", "InvestingCF", "FinancingCF",
+        foreach (var prop in new[] { "BPS", "ROA", "TotalAssetTurnover", "Dividend", "OperatingCF", "InvestingCF", "FinancingCF",
             "RevenueGrowth10Y", "DividendGrowth10Y", "BuybackAmount", "BenefitContent", "BenefitValue",
             "AveragePrice3M", "PriceChangeAverage3M", "OrdinaryProfitMargin", "Description", "IRUrl" })
             Assert.True(first.TryGetProperty(prop, out _), $"{prop} が screen レスポンスに無い");
@@ -189,8 +189,14 @@ public class WebApiTests : IClassFixture<WebApiTests.ApiFactory>
         var res = await _client.PostAsJsonAsync($"/api/stocks/{code}/userdata", body);
         res.EnsureSuccessStatusCode();
         var j = await JsonOf(res);
-        Assert.Equal("最重要候補", j.GetProperty("Memo").GetProperty("Classification").GetString());
-        Assert.Equal(95.0, j.GetProperty("UserInterest").GetDouble());
+        var st = j.GetProperty("stock");
+        Assert.Equal("最重要候補", st.GetProperty("Memo").GetProperty("Classification").GetString());
+        Assert.Equal(95.0, st.GetProperty("UserInterest").GetDouble());
+        // バフェット採点の根拠(内訳)が返り、満点合計は100
+        var buffett = j.GetProperty("buffett");
+        Assert.Equal(JsonValueKind.Array, buffett.ValueKind);
+        double maxSum = 0; foreach (var c in buffett.EnumerateArray()) maxSum += c.GetProperty("Max").GetDouble();
+        Assert.Equal(100, maxSum);
     }
 
     [Fact]
