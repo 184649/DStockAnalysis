@@ -148,6 +148,14 @@ const COLS = [
   { k: "LongTermScore", label: "長期適性", kind: "score" },
   { k: "RevaluationScore", label: "再評価", kind: "score" },
   { k: "BuffettScore", label: "バフェット", kind: "buffett" },
+  { k: "Buffett.OverallGrade", label: "評価ランク", kind: "text" },
+  { k: "Buffett.DataConfidence", label: "信頼度%", kind: "num", d: 0 },
+  { k: "Buffett.BusinessDurabilityScore", label: "事業耐久", kind: "score" },
+  { k: "Buffett.ProfitabilityScore", label: "収益力", kind: "score" },
+  { k: "Buffett.SafetyScore", label: "財務安全", kind: "score" },
+  { k: "Buffett.GrowthStabilityScore", label: "成長安定", kind: "score" },
+  { k: "Buffett.CapitalAllocationScore", label: "資本配分", kind: "score" },
+  { k: "Buffett.ValuationScore", label: "割安性(B)", kind: "score" },
   { k: "WantToBuyScore", label: "買いたい度", kind: "score" },
   { k: "OverallScore", label: "総合", kind: "score" },
   { k: "OverallGrade", label: "評価", kind: "text" },
@@ -158,8 +166,14 @@ const COLS = [
 // 会社予想・財務を取得するまで「-」にする(暫定データで誤ったスコアを出さないため)。
 const PROV_OK = new Set(["Price", "PER", "PBR", "MixFactor", "EPS", "BPS", "Dividend", "DividendYield"]);
 
+// ドット区切りキー("Buffett.ProfitabilityScore")を解決する。
+function gv(o, k) {
+  if (k.indexOf(".") < 0) return o ? o[k] : undefined;
+  return k.split(".").reduce((a, p) => (a == null ? a : a[p]), o);
+}
+
 function cell(col, s) {
-  const v = s[col.k];
+  const v = gv(s, col.k);
   const unf = !s.IndicatorsFetched;
   const prov = s.Provisional;
   // 基本情報(コード・銘柄名・市場等)は常に表示。指標・スコアは未取得なら「-」。
@@ -174,6 +188,7 @@ function cell(col, s) {
       // 基本情報(市場/業種/規模)は常に表示。その他のテキスト指標は未取得/空欄なら「-」。
       const basic = (col.k === "Market" || col.k === "Sector" || col.k === "Scale");
       if (!basic && unf) return `<td>-</td>`;
+      if (!basic && prov && !PROV_OK.has(col.k)) return `<td>-</td>`; // 暫定は財務由来テキスト(評価ランク等)を出さない
       return `<td>${v ? esc(v) : "-"}</td>`;
     }
   }
@@ -324,7 +339,7 @@ function sortResults() {
   const dir = state.sort.dir;
   const isNum = !["id", "name", "text"].includes(col.kind);
   const val = (s) => {
-    const v = s[key];
+    const v = gv(s, key);
     if (isNum) {
       if (!s.IndicatorsFetched) return null;
       const n = Number(v);
@@ -451,7 +466,6 @@ async function openAnalysis(code, refresh = false) {
   state.selected = data.stock;
   state.links = data.links;
   state.lastFetched = data.lastFetched;
-  state.buffett = data.buffett || [];
   renderAnalysisList(document.getElementById("analysisSearch").value);
   renderDetail();
 }
@@ -600,23 +614,33 @@ function renderDetail() {
       <div class="box"><h3>株価変化</h3>${catTable(s, F, CAT_PRICECHG)}</div>
       <div class="box"><h3>スコア</h3>${catTable(s, F, CAT_SCORES)}</div>
     </div>`;
-  const bd = state.buffett || [];
-  const bdSum = Math.round(bd.reduce((a, c) => a + (c.Earned || 0), 0));
-  const buffettBox = (s.IndicatorsFetched && !s.Provisional && bd.length) ? `
+  const bf = s.Buffett || {};
+  const bfRows = [
+    ["事業耐久力", bf.BusinessDurabilityScore, "10年後も稼げるか(利益率・長期成長・利益とCFの安定・堀)"],
+    ["収益力", bf.ProfitabilityScore, "ROE・ROA・利益率・営業CFマージン"],
+    ["財務安全性", bf.SafetyScore, "自己資本比率・有利子負債・FCF・配当余力(金融業は専用基準)"],
+    ["成長安定性", bf.GrowthStabilityScore, "売上・営業利益・EPS成長と下方耐性"],
+    ["株主還元・資本配分", bf.CapitalAllocationScore, "連続増配・増配率・性向・自社株買い・総利回り"],
+    ["割安性", bf.ValuationScore, "PER・PBR・MIX・FCF利回り(質を加味)"],
+  ];
+  const buffettBox = (s.IndicatorsFetched && !s.Provisional) ? `
     <div class="box">
-      <h3>バフェット採点の根拠 <span class="bd-total ${qClass("buffett", bdSum)}">${bdSum} / 100</span></h3>
-      <div class="desc">バフェットの投資原則(資本収益力=ROA重視・利益率=モート・財務健全性・キャッシュ創出力・株主還元/再投資の質・割安性=安全余裕)で、
-      <b>「現在株価での投資としての魅力」</b>を採点します。事業の質と価格の両方を見るため、優れた事業でも割高なら満点にはならず、
-      資本効率(ROA)の低い事業は割安でも中位に留まります(例: 高PERの優良株、薄利・低ROAの資本集約型)。
-      競争優位・経営の信頼などの<b>定性面は自動取得できません</b>。下の「バフェットチェック」に回答すると採点(定性6点＋各項目の補正)に反映され、確信のある銘柄ほど点が上がります。</div>
+      <h3>バフェット採点
+        <span class="bd-total ${qClass("buffett", bf.BuffettScore || 0)}">${Math.round(bf.BuffettScore || 0)} / 100</span>
+        <span class="bd-grade">${esc(bf.OverallGrade || "-")}</span>
+        <span class="bd-conf">データ信頼度 ${Math.round(bf.DataConfidence || 0)}%</span>
+      </h3>
+      <div class="desc">${esc(bf.JudgementText || "")}</div>
+      <div class="desc" style="font-size:11px">配点: 事業耐久力25% / 収益力20% / 財務安全性15% / 成長安定性15% / 資本配分10% / 割安性15%。
+      事業の質を割安性より重視。欠損指標は除外して重み再配分し、未取得が多い銘柄はデータ信頼度に応じて上限を設けます。</div>
       <div class="buffett-bd">
-        ${bd.map(c => {
-          const pct = c.Max ? Math.max(0, Math.min(100, c.Earned / c.Max * 100)) : 0;
-          const q = pct >= 70 ? "good" : pct >= 45 ? "ok" : pct >= 25 ? "caution" : "bad";
+        ${bfRows.map(([label, v, note]) => {
+          const val = Math.round(v || 0);
+          const q = val >= 70 ? "good" : val >= 45 ? "ok" : val >= 25 ? "caution" : "bad";
           return `<div class="bd-row">
-            <div class="bd-h"><span>${esc(c.Label)}</span><span class="bd-pts">${c.Earned} / ${c.Max}</span></div>
-            <div class="bd-bar"><div class="bd-fill ${q}" style="width:${pct.toFixed(0)}%"></div></div>
-            <div class="bd-note">${esc(c.Note)}</div>
+            <div class="bd-h"><span>${esc(label)}</span><span class="bd-pts">${val} / 100</span></div>
+            <div class="bd-bar"><div class="bd-fill ${q}" style="width:${val}%"></div></div>
+            <div class="bd-note">${esc(note)}</div>
           </div>`;
         }).join("")}
       </div>
@@ -709,12 +733,11 @@ async function saveUserData() {
   for (const [k] of MEMO_FIELDS) memo[k] = document.getElementById("memo_" + k).value;
   const interest = Number(document.getElementById("memo_Interest").value);
   const res = await API.saveUser(s.Code, { Memo: memo, BuffettCheck: check, UserInterest: interest });
-  const updated = res.stock || res; // {stock, buffett}
+  const updated = res.stock || res; // { stock }
   state.selected = updated;
-  state.buffett = res.buffett || state.buffett;
   // 一覧キャッシュも更新
   const idx = state.allCache.findIndex(x => x.Code === updated.Code);
-  if (idx >= 0) Object.assign(state.allCache[idx], { BuffettScore: updated.BuffettScore, OverallScore: updated.OverallScore });
+  if (idx >= 0) Object.assign(state.allCache[idx], { BuffettScore: updated.BuffettScore, OverallScore: updated.OverallScore, Buffett: updated.Buffett });
   renderDetail();
   toast("保存し、スコアを再計算しました");
 }
@@ -818,13 +841,24 @@ const CMP_ROWS = [
   ["ProfitabilityScore", "収益性", "int", "score"], ["ReturnScore", "還元性", "int", "score"],
   ["EfficiencyScore", "効率性", "int", "score"], ["ValuationScore", "割安性", "int", "score"],
   ["LongTermScore", "長期適性", "int", "score"], ["RevaluationScore", "再評価", "int", "score"],
-  ["BuffettScore", "バフェット", "int", "buffett"], ["WantToBuyScore", "買いたい度", "int", "score"],
-  ["OverallScore", "総合", "int", "score"],
+  ["WantToBuyScore", "買いたい度", "int", "score"], ["OverallScore", "総合", "int", "score"],
+  // バフェット採点(総合・6サブスコア・信頼度・ランク)
+  ["BuffettScore", "バフェット総合", "int", "buffett"],
+  ["Buffett.OverallGrade", "評価ランク", "text"],
+  ["Buffett.DataConfidence", "データ信頼度%", "int"],
+  ["Buffett.BusinessDurabilityScore", "事業耐久力", "int", "score"],
+  ["Buffett.ProfitabilityScore", "収益力", "int", "score"],
+  ["Buffett.SafetyScore", "財務安全性", "int", "score"],
+  ["Buffett.GrowthStabilityScore", "成長安定性", "int", "score"],
+  ["Buffett.CapitalAllocationScore", "資本配分", "int", "score"],
+  ["Buffett.ValuationScore", "割安性(B)", "int", "score"],
 ];
 
 function cmpVal(s, k, fmt) {
   if (!s.IndicatorsFetched) return "-";
-  const v = s[k]; const n = Number(v);
+  const v = gv(s, k);
+  if (fmt === "text") return v ? esc(String(v)) : "-";
+  const n = Number(v);
   if (v == null || isNaN(n) || n === 0) return "-";
   switch (fmt) {
     case "comma": return fcomma(n);
@@ -848,7 +882,7 @@ async function renderCompare() {
   let html = "<table class='cmp'><thead><tr><th>指標</th>" + stocks.map(s => `<th>${esc(s.Name)}<br><span style="color:var(--sub)">${esc(s.Code)}</span></th>`).join("") + "</tr></thead><tbody>";
   for (const [k, label, fmt, m] of CMP_ROWS) {
     html += `<tr><th>${label}</th>` + stocks.map(s => {
-      const v = s[k];
+      const v = gv(s, k);
       const cls = (m && s.IndicatorsFetched && v != null && Number(v) !== 0) ? qClass(m, v) : "";
       return `<td class="${cls}">${cmpVal(s, k, fmt)}</td>`;
     }).join("") + "</tr>";
@@ -933,7 +967,7 @@ async function reloadAll() {
   const all = await API.screen({});
   state.allCache = all.stocks;
   await runScreen();
-  if (state.selected) { const d = await API.stock(state.selected.Code); state.selected = d.stock; state.links = d.links; state.buffett = d.buffett || []; renderDetail(); }
+  if (state.selected) { const d = await API.stock(state.selected.Code); state.selected = d.stock; state.links = d.links; renderDetail(); }
 }
 
 async function init() {

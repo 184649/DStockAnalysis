@@ -129,6 +129,9 @@ public class Stock : ObservableObject
     private double _buffettScore;
     public double BuffettScore { get => _buffettScore; set => SetProperty(ref _buffettScore, value); }
 
+    /// <summary>バフェット採点(総合点・6サブスコア・データ信頼度・ランク・判定)。BuffettScore はこの BuffettScore と同期。</summary>
+    public BuffettResult Buffett { get; set; } = new();
+
     private double _wantToBuyScore;
     public double WantToBuyScore { get => _wantToBuyScore; set => SetProperty(ref _wantToBuyScore, value); }
 

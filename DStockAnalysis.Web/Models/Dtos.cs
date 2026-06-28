@@ -118,6 +118,9 @@ public class StockSummaryDto
     public bool IndicatorsFetched { get; set; }
     public bool Provisional { get; set; }
 
+    /// <summary>バフェット採点(総合点・6サブスコア・データ信頼度・ランク・判定)。一覧/比較で参照。</summary>
+    public BuffettResult Buffett { get; set; } = new();
+
     public static StockSummaryDto From(Stock s) => new()
     {
         Code = s.Code, Name = s.Name, Market = s.Market, Sector = s.Sector, Scale = s.Scale, Theme = s.Theme,
@@ -164,7 +167,8 @@ public class StockSummaryDto
         WantToBuyScore = s.WantToBuyScore, OverallScore = s.OverallScore, OverallGrade = s.OverallGrade,
         JudgementText = s.JudgementText, UserInterest = s.UserInterest,
 
-        IndicatorsFetched = s.IndicatorsFetched, Provisional = s.Provisional
+        IndicatorsFetched = s.IndicatorsFetched, Provisional = s.Provisional,
+        Buffett = s.Buffett
     };
 }
 
