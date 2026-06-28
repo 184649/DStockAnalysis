@@ -24,10 +24,12 @@ public sealed class BuffettScoreWeightOptimizer
     /// <summary>教師データへ最適化済みの既定重み(初回アクセス時に1度だけ計算しキャッシュ)。</summary>
     public static BuffettScoreWeights DefaultWeights => _default.Value;
 
-    /// <summary>教師データに対して TotalLoss 最小の重みを探索する。</summary>
-    public Result Optimize(IReadOnlyList<BuffettScoreTrainingSample>? set = null)
+    /// <summary>教師データ(スコア誤差・ランク・順位制約)に対して TotalLoss 最小の重みを探索する。</summary>
+    public Result Optimize(IReadOnlyList<BuffettScoreTrainingSample>? set = null,
+        IReadOnlyList<BuffettScoreRankingConstraint>? constraints = null)
     {
         var samples = set ?? BuffettScoreCalibrationSet.All;
+        var rank = constraints ?? BuffettScoreCalibrationSet.RankingConstraints;
         var calc = new BuffettScoreCalculator();
 
         BuffettScoreWeights best = Fallback();
@@ -35,12 +37,26 @@ public sealed class BuffettScoreWeightOptimizer
         foreach (var w in Candidates())
         {
             double tot = 0;
-            foreach (var smp in samples) tot += Eval(calc, smp, w).Loss;
+            var scores = new Dictionary<string, double>();
+            foreach (var smp in samples) { var ev = Eval(calc, smp, w); tot += ev.Loss; scores[smp.Name] = ev.ActualScore; }
+            tot += RankingLoss(rank, scores);
             if (tot < bestLoss) { bestLoss = tot; best = w; }
         }
 
         var evals = Evaluate(samples, best);
-        return new Result(best, evals.Sum(e => e.Loss), evals);
+        var bestScores = evals.ToDictionary(e => e.Sample.Name, e => e.ActualScore);
+        double total = evals.Sum(e => e.Loss) + RankingLoss(rank, bestScores);
+        return new Result(best, total, evals);
+    }
+
+    /// <summary>順位制約の Loss(BetterScore が WorseScore + Margin 未満なら不足分の2乗)。</summary>
+    public static double RankingLoss(IReadOnlyList<BuffettScoreRankingConstraint> constraints, IReadOnlyDictionary<string, double> scores)
+    {
+        double loss = 0;
+        foreach (var c in constraints)
+            if (scores.TryGetValue(c.BetterSampleName, out var b) && scores.TryGetValue(c.WorseSampleName, out var w))
+                loss += Math.Pow(Math.Max(0, c.Margin - (b - w)), 2);
+        return loss;
     }
 
     /// <summary>指定重みで各教師データを評価した明細を返す(レポート/テスト用)。</summary>
@@ -58,8 +74,8 @@ public sealed class BuffettScoreWeightOptimizer
                          : 0;
         double gradeLoss = smp.AllowedGrades.Contains(r.OverallGrade) ? 0 : 200;
         double penalty = 0;
-        if (smp.ProhibitS && r.OverallGrade == "S") penalty += 1000;
-        if (smp.Danger && r.BuffettScore >= 70) penalty += 1000;
+        if (smp.ProhibitS && (r.OverallGrade == "S" || r.BuffettScore >= 90)) penalty += 1000;
+        if (smp.Danger && (r.BuffettScore >= 70 || r.OverallGrade is "A" or "S")) penalty += 1000;
         return new SampleEval(smp, r.BuffettScore, r.OverallGrade, scoreLoss, gradeLoss, penalty);
     }
 

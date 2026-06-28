@@ -210,7 +210,7 @@ public class WebApiTests : IClassFixture<WebApiTests.ApiFactory>
 
         string[] fields = { "BuffettScore", "BusinessDurabilityScore", "ProfitabilityScore", "SafetyScore",
             "GrowthStabilityScore", "CapitalAllocationScore", "ValuationScore", "DataConfidence", "OverallGrade",
-            "JudgementText", "Profile", "Strengths", "Weaknesses", "RankReason" };
+            "JudgementText", "ScoringProfile", "HighScoreReasons", "PenaltyReasons", "RankDecisionReasons", "UsedWeights" };
 
         // /api/screen
         var screen = await JsonOf(await _client.PostAsJsonAsync("/api/screen", new { }));

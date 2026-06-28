@@ -75,11 +75,23 @@ public class BuffettScoreCalculator
             || s.IsSampleIndicators || conf < 80;
         if (qualifies && !disqualified) final = Math.Max(final, 70); // 最低70=B以上
 
-        final = Math.Round(final, 0);
+        double computed = Math.Round(final, 0); // ランク補正前の計算スコア
+
+        // ランク不適格時はスコアにも上限をかけ、点数とランクを整合させる("92/A"を出さない)。
+        bool sOk = MeetsS(s, biz, prof, safe, growth, capital, val, conf, computed, profile);
+        bool aOk = MeetsA(s, biz, prof, safe, growth, conf, computed);
+        bool bOk = MeetsB(s, fin, conf, computed);
+        double capped = computed;
+        if (!sOk) capped = Math.Min(capped, 89);
+        if (!aOk) capped = Math.Min(capped, 79);
+        if (!bOk) capped = Math.Min(capped, 69);
+        // 長期耐久性が未実証(ヒット依存・景気敏感)は、短期の高ROE/高成長/割安でも上位(A以上)に置かない。
+        if (IsHitDriven(s) || IsCyclical(s.Sector)) capped = Math.Min(capped, 79);
+        capped = Math.Round(Math.Clamp(capped, 0, 100), 0);
 
         var r = new BuffettResult
         {
-            BuffettScore = final,
+            BuffettScore = capped,
             BusinessDurabilityScore = Math.Round(biz, 0),
             ProfitabilityScore = Math.Round(prof, 0),
             SafetyScore = Math.Round(safe, 0),
@@ -87,32 +99,36 @@ public class BuffettScoreCalculator
             CapitalAllocationScore = Math.Round(capital, 0),
             ValuationScore = Math.Round(val, 0),
             DataConfidence = Math.Round(conf, 0),
-            Profile = profile switch { Profile.Financial => "FinancialCompany", Profile.Trading => "TradingCompany", _ => "StandardCompany" },
+            Profile = ProfileName(profile),
+            ScoringProfile = ProfileName(profile),
+            UsedWeights = w,
+            CalibrationInfo = $"教師データ{BuffettScoreCalibrationSet.All.Count}件・順位制約{BuffettScoreCalibrationSet.RankingConstraints.Count}件で重み最適化",
         };
-        // ランクは点数だけで決めない。S は厳格条件を満たす場合のみ許可(満たさなければ A 止まり)。
-        string grade = Grade(final);
-        bool sAllowed = AllowS(s, r, profile, conf);
-        if (grade == "S" && !sAllowed) grade = "A";
-        r.OverallGrade = grade;
-
+        r.OverallGrade = Grade(capped);
         r.JudgementText = Judgement(r, profile);
-        BuildReasons(s, r, profile, sAllowed);
+        BuildReasons(s, r, profile, sOk, aOk, bOk, computed, capped);
         return r;
     }
 
-    /// <summary>S ランクの厳格条件。点数(90+)に加え、質・財務・CF・長期成長・データ信頼度をすべて満たす場合のみ。</summary>
-    private static bool AllowS(Stock s, BuffettResult r, Profile profile, double conf)
-    {
-        if (profile == Profile.Trading) return false;                 // 商社はSにしない
-        if (IsCyclical(s.Sector)) return false;                       // 景気敏感(市況)はSにしない
-        if (IsHitDriven(s)) return false;                             // ヒット依存はSにしない
-        return r.BuffettScore >= 90 && conf >= 85
-            && r.BusinessDurabilityScore >= 75 && r.ProfitabilityScore >= 75 && r.SafetyScore >= 75
-            && r.GrowthStabilityScore >= 65 && r.CapitalAllocationScore >= 60 && r.ValuationScore >= 60
-            && !s.IsSampleIndicators && s.PER > 0 && s.EPS > 0 && s.ROE > 0
-            && s.OperatingCF > 0 && s.FreeCashFlow >= 0 && s.PayoutRatio <= 100
-            && s.RevenueGrowth10Y >= 3;                               // 長期成長の実績を要求
-    }
+    private static string ProfileName(Profile p) => p switch
+    { Profile.Financial => "FinancialCompany", Profile.Trading => "TradingCompany", _ => "StandardCompany" };
+
+    // ランク適格判定(計算スコア computed とサブスコアで判定)
+    private static bool MeetsS(Stock s, double biz, double prof, double safe, double growth, double capital, double val,
+        double conf, double computed, Profile profile)
+        => computed >= 90 && conf >= 85
+        && biz >= 75 && prof >= 75 && safe >= 75 && growth >= 70 && capital >= 60 && val >= 60
+        && !s.IsSampleIndicators && s.PER > 0 && s.EPS > 0 && s.ROE > 0 && s.OperatingCF > 0 && s.FreeCashFlow >= 0
+        && profile != Profile.Trading && !IsCyclical(s.Sector) && !IsHitDriven(s) && s.RevenueGrowth10Y >= 3;
+
+    private static bool MeetsA(Stock s, double biz, double prof, double safe, double growth, double conf, double computed)
+        => computed >= 80 && conf >= 75 && biz >= 65 && prof >= 65 && safe >= 65 && growth >= 55
+        && !s.IsSampleIndicators && s.PER > 0 && s.EPS > 0 && s.ROE > 0;
+
+    private static bool MeetsB(Stock s, bool fin, double conf, double computed)
+        => computed >= 70 && conf >= 60 && s.PER > 0 && s.EPS > 0 && s.ROE > 0
+        && !(!fin && s.OperatingCF < 0 && s.FreeCashFlow < 0)
+        && !(!fin && s.EquityRatio > 0 && s.EquityRatio < 20);
 
     private static bool IsCyclical(string? sector)
     {
@@ -131,8 +147,9 @@ public class BuffettScoreCalculator
         return theme && (s.RevenueGrowth10Y < 3 || s.FreeCashFlow <= 0);
     }
 
-    /// <summary>採点理由(高評価要因・減点要因・ランク判定理由)を生成する。</summary>
-    private static void BuildReasons(Stock s, BuffettResult r, Profile profile, bool sAllowed)
+    /// <summary>採点理由(高評価要因・減点要因・ランク判定/補正理由)を生成する。</summary>
+    private static void BuildReasons(Stock s, BuffettResult r, Profile profile, bool sOk, bool aOk, bool bOk,
+        double computed, double capped)
     {
         var dims = new (string name, double v)[]
         {
@@ -151,7 +168,7 @@ public class BuffettScoreCalculator
         if (s.ConsecutiveDividendYears >= 5) hi.Add($"連続増配 {s.ConsecutiveDividendYears}年");
         if (s.BuybackAmount > 0) hi.Add("自社株買いあり");
         if (strong.Count > 0) hi.Add("強み: " + string.Join("・", strong));
-        r.Strengths = hi.Count > 0 ? string.Join("、", hi) : "特筆すべき高評価要因は乏しい。";
+        r.HighScoreReasons = hi.Count > 0 ? string.Join("、", hi) : "特筆すべき高評価要因は乏しい。";
 
         var lo = new List<string>();
         if (s.PER <= 0 || s.EPS <= 0) lo.Add("赤字(PER/EPSが0以下)");
@@ -164,16 +181,21 @@ public class BuffettScoreCalculator
         if (IsHitDriven(s)) lo.Add("ヒット依存で長期実績・CF安定が不足");
         if (weak.Count > 0) lo.Add("弱み: " + string.Join("・", weak));
         if (r.DataConfidence < 80) lo.Add($"データ信頼度 {r.DataConfidence:0}%");
-        r.Weaknesses = lo.Count > 0 ? string.Join("、", lo) : "明確な減点要因は少ない。";
+        r.PenaltyReasons = lo.Count > 0 ? string.Join("、", lo) : "明確な減点要因は少ない。";
 
-        string rank = $"BuffettScore {r.BuffettScore:0} のため {r.OverallGrade} 評価。";
-        if (r.OverallGrade != "S")
+        string rank;
+        if (capped < computed)
         {
-            if (r.BuffettScore >= 90 && !sAllowed)
-                rank += "90点以上だがS厳格条件(質・財務・長期成長・データ信頼度)に未達のためS不可。";
-            else rank += "S条件(90点以上＋各サブ高水準)には未達。";
+            string failed = !bOk ? "B" : !aOk ? "A" : "S";
+            string why = !bOk ? "財務危険・データ信頼度・赤字等のB条件" : !aOk ? "収益力/財務/成長/信頼度等のA条件" : "質・財務・長期成長・データ信頼度等のS条件";
+            rank = $"計算上は{computed:0}点だったが、{failed}条件未達(={why})のため {capped:0}点 / {r.OverallGrade} に補正。";
         }
-        r.RankReason = rank;
+        else
+        {
+            rank = $"BuffettScore {capped:0} のため {r.OverallGrade} 評価。";
+            if (r.OverallGrade != "S") rank += "上位ランクの厳格条件には未達。";
+        }
+        r.RankDecisionReasons = rank;
     }
 
     // ========== 業種プロファイル判定 ==========
