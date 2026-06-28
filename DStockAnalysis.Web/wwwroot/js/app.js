@@ -645,6 +645,11 @@ function renderDetail() {
           </div>`;
         }).join("")}
       </div>
+      <div class="reasons">
+        <div><span class="rk good">高評価要因</span> ${esc(bf.Strengths || "-")}</div>
+        <div><span class="rk bad">減点要因</span> ${esc(bf.Weaknesses || "-")}</div>
+        <div><span class="rk">ランク判定</span> ${esc(bf.RankReason || "-")}</div>
+      </div>
     </div>` : "";
   el.innerHTML = `
     <div class="head">
@@ -673,11 +678,11 @@ function renderDetail() {
       ${metricCard("配当性向", s.PayoutRatio, "%")}
     </div>
     <div class="cards">
-      ${scoreCard("総合評価(" + esc(s.OverallGrade) + ")", s.OverallScore)}
+      ${scoreCard("総合評価(" + ((s.Buffett && s.Buffett.OverallGrade) || "-") + ")", s.BuffettScore, "buffett")}
       ${scoreCard("長期適性", s.LongTermScore)}
       ${scoreCard("再評価期待", s.RevaluationScore)}
-      ${scoreCard("バフェット", s.BuffettScore, "buffett")}
       ${scoreCard("買いたい度", s.WantToBuyScore)}
+      ${scoreCard("参考: 旧総合(" + esc(s.OverallGrade) + ")", s.OverallScore)}
     </div>
 
     ${buffettBox}

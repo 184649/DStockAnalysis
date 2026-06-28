@@ -209,7 +209,8 @@ public class WebApiTests : IClassFixture<WebApiTests.ApiFactory>
         await _client.PostAsync("/api/import", new StringContent(csv, Encoding.UTF8, "text/csv"));
 
         string[] fields = { "BuffettScore", "BusinessDurabilityScore", "ProfitabilityScore", "SafetyScore",
-            "GrowthStabilityScore", "CapitalAllocationScore", "ValuationScore", "DataConfidence", "OverallGrade", "JudgementText" };
+            "GrowthStabilityScore", "CapitalAllocationScore", "ValuationScore", "DataConfidence", "OverallGrade",
+            "JudgementText", "Profile", "Strengths", "Weaknesses", "RankReason" };
 
         // /api/screen
         var screen = await JsonOf(await _client.PostAsJsonAsync("/api/screen", new { }));
