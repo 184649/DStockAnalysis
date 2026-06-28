@@ -168,6 +168,10 @@ table.grid tbody tr { cursor: pointer; }
 .bd-fill.good { background: var(--good-solid); } .bd-fill.ok { background: var(--ok-solid); }
 .bd-fill.caution { background: var(--caution-solid); } .bd-fill.bad { background: var(--bad-solid); }
 .bd-note { font-size: 11px; color: var(--sub); margin-top: 2px; }
+.reasons { margin-top: 10px; display: grid; gap: 6px; font-size: 12px; }
+.reasons .rk { display: inline-block; min-width: 84px; padding: 1px 6px; border-radius: 4px; margin-right: 6px; background: var(--grid); color: var(--text); font-weight: 600; }
+.reasons .rk.good { background: var(--good-solid); color: #06281a; }
+.reasons .rk.bad { background: var(--caution-solid); color: #3a2600; }
 .bd-grade { font-size: 16px; font-weight: 800; margin-left: 8px; color: var(--accent-solid, #29B6F6); }
 .bd-conf { font-size: 11px; color: var(--sub); margin-left: 8px; font-weight: 400; }
 

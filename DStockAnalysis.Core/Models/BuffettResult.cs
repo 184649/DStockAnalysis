@@ -18,4 +18,7 @@ public class BuffettResult
     public string Profile { get; set; } = "StandardCompany"; // 採点プロファイル(Standard/Financial/Trading)
     public string OverallGrade { get; set; } = "E";     // S/A/B/C/D/E
     public string JudgementText { get; set; } = "";
+    public string Strengths { get; set; } = "";         // 高評価要因
+    public string Weaknesses { get; set; } = "";        // 減点要因
+    public string RankReason { get; set; } = "";        // ランク判定理由
 }

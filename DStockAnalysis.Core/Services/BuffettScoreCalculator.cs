@@ -20,7 +20,10 @@ public class BuffettScoreCalculator
 {
     public enum Profile { Standard, Financial, Trading }
 
-    public BuffettResult Calculate(Stock s)
+    /// <summary>既定の重み(教師データへ最適化した値)で採点する。</summary>
+    public BuffettResult Calculate(Stock s) => Calculate(s, BuffettScoreWeightOptimizer.DefaultWeights);
+
+    public BuffettResult Calculate(Stock s, BuffettScoreWeights w)
     {
         var profile = DetectProfile(s);
         bool fin = profile == Profile.Financial;
@@ -28,10 +31,10 @@ public class BuffettScoreCalculator
 
         // 業種プロファイル別の採点。総合商社・卸売業(Trading)は営業利益率の絶対値に依存せず、
         // ROE・CF・財務・株主還元・バリュエーションを重視する。
-        double biz = trading ? TradingBusinessDurability(s) : BusinessDurability(s);
-        double prof = trading ? TradingProfitability(s) : Profitability(s, fin);
+        double biz = fin ? FinancialBusinessDurability(s) : trading ? TradingBusinessDurability(s) : BusinessDurability(s);
+        double prof = fin ? FinancialProfitability(s) : trading ? TradingProfitability(s) : Profitability(s, fin);
         double safe = fin ? FinancialSafety(s) : Safety(s);
-        double growth = trading ? TradingGrowthStability(s) : GrowthStability(s);
+        double growth = fin ? FinancialGrowthStability(s) : trading ? TradingGrowthStability(s) : GrowthStability(s);
         double capital = CapitalAllocation(s);
         double val = Valuation(s);
 
@@ -42,7 +45,8 @@ public class BuffettScoreCalculator
         if (trading && s.PayoutRatio >= 25 && s.PayoutRatio <= 45 && s.DividendYield > 0 && s.ROE >= 10 && s.PER > 0 && s.PER <= 18)
             capital = Math.Max(capital, 70);
 
-        double raw = biz * 0.25 + prof * 0.20 + safe * 0.15 + growth * 0.15 + capital * 0.10 + val * 0.15;
+        double raw = biz * w.BusinessDurabilityWeight + prof * w.ProfitabilityWeight + safe * w.SafetyWeight
+                   + growth * w.GrowthStabilityWeight + capital * w.CapitalAllocationWeight + val * w.ValuationWeight;
         double conf = DataConfidence(s);
 
         // 上限(複数該当時は最小値を採用)
@@ -85,9 +89,91 @@ public class BuffettScoreCalculator
             DataConfidence = Math.Round(conf, 0),
             Profile = profile switch { Profile.Financial => "FinancialCompany", Profile.Trading => "TradingCompany", _ => "StandardCompany" },
         };
-        r.OverallGrade = Grade(final);
+        // ランクは点数だけで決めない。S は厳格条件を満たす場合のみ許可(満たさなければ A 止まり)。
+        string grade = Grade(final);
+        bool sAllowed = AllowS(s, r, profile, conf);
+        if (grade == "S" && !sAllowed) grade = "A";
+        r.OverallGrade = grade;
+
         r.JudgementText = Judgement(r, profile);
+        BuildReasons(s, r, profile, sAllowed);
         return r;
+    }
+
+    /// <summary>S ランクの厳格条件。点数(90+)に加え、質・財務・CF・長期成長・データ信頼度をすべて満たす場合のみ。</summary>
+    private static bool AllowS(Stock s, BuffettResult r, Profile profile, double conf)
+    {
+        if (profile == Profile.Trading) return false;                 // 商社はSにしない
+        if (IsCyclical(s.Sector)) return false;                       // 景気敏感(市況)はSにしない
+        if (IsHitDriven(s)) return false;                             // ヒット依存はSにしない
+        return r.BuffettScore >= 90 && conf >= 85
+            && r.BusinessDurabilityScore >= 75 && r.ProfitabilityScore >= 75 && r.SafetyScore >= 75
+            && r.GrowthStabilityScore >= 65 && r.CapitalAllocationScore >= 60 && r.ValuationScore >= 60
+            && !s.IsSampleIndicators && s.PER > 0 && s.EPS > 0 && s.ROE > 0
+            && s.OperatingCF > 0 && s.FreeCashFlow >= 0 && s.PayoutRatio <= 100
+            && s.RevenueGrowth10Y >= 3;                               // 長期成長の実績を要求
+    }
+
+    private static bool IsCyclical(string? sector)
+    {
+        if (string.IsNullOrEmpty(sector)) return false;
+        foreach (var kw in new[] { "鉄鋼", "化学", "海運", "非鉄", "石油", "鉱業", "ガラス", "パルプ", "繊維" })
+            if (sector.Contains(kw)) return true;
+        return false;
+    }
+
+    private static bool IsHitDriven(Stock s)
+    {
+        // ヒット商品依存(ゲーム/アニメ等)で、長期成長(10年)が無く CF 安定が確認できない
+        bool theme = false;
+        foreach (var kw in new[] { "ゲーム", "アニメ", "IP", "キャラクター", "娯楽" })
+            if ((s.Theme?.Contains(kw) ?? false)) { theme = true; break; }
+        return theme && (s.RevenueGrowth10Y < 3 || s.FreeCashFlow <= 0);
+    }
+
+    /// <summary>採点理由(高評価要因・減点要因・ランク判定理由)を生成する。</summary>
+    private static void BuildReasons(Stock s, BuffettResult r, Profile profile, bool sAllowed)
+    {
+        var dims = new (string name, double v)[]
+        {
+            ("事業耐久力", r.BusinessDurabilityScore), ("収益力", r.ProfitabilityScore),
+            ("財務安全性", r.SafetyScore), ("成長安定性", r.GrowthStabilityScore),
+            ("株主還元・資本配分", r.CapitalAllocationScore), ("割安性", r.ValuationScore),
+        };
+        var strong = dims.Where(d => d.v >= 70).OrderByDescending(d => d.v).Select(d => $"{d.name}({d.v:0})").ToList();
+        var weak = dims.Where(d => d.v < 50).OrderBy(d => d.v).Select(d => $"{d.name}({d.v:0})").ToList();
+
+        var hi = new List<string>();
+        if (s.ROE >= 12) hi.Add($"ROE {s.ROE:0.#}% と高め");
+        if (s.PER > 0 && s.PER <= 15) hi.Add($"PER {s.PER:0.#} は妥当");
+        if (s.OperatingCF > 0 && s.FreeCashFlow > 0) hi.Add("営業CF・フリーCFとも黒字");
+        if (s.PayoutRatio >= 20 && s.PayoutRatio <= 60) hi.Add($"配当性向 {s.PayoutRatio:0.#}% は健全");
+        if (s.ConsecutiveDividendYears >= 5) hi.Add($"連続増配 {s.ConsecutiveDividendYears}年");
+        if (s.BuybackAmount > 0) hi.Add("自社株買いあり");
+        if (strong.Count > 0) hi.Add("強み: " + string.Join("・", strong));
+        r.Strengths = hi.Count > 0 ? string.Join("、", hi) : "特筆すべき高評価要因は乏しい。";
+
+        var lo = new List<string>();
+        if (s.PER <= 0 || s.EPS <= 0) lo.Add("赤字(PER/EPSが0以下)");
+        if (s.OperatingCF < 0 && s.FreeCashFlow < 0) lo.Add("営業CF・フリーCFが赤字");
+        else if (s.FreeCashFlow < 0) lo.Add("フリーCFが赤字");
+        if (s.EquityRatio > 0 && s.EquityRatio < 20) lo.Add($"自己資本比率 {s.EquityRatio:0.#}% が低い");
+        if (s.PayoutRatio > 100) lo.Add($"配当性向 {s.PayoutRatio:0.#}% が過大");
+        if (profile == Profile.Trading) lo.Add("商社特有の市況感応度");
+        if (IsCyclical(s.Sector)) lo.Add("景気敏感(市況)による業績変動");
+        if (IsHitDriven(s)) lo.Add("ヒット依存で長期実績・CF安定が不足");
+        if (weak.Count > 0) lo.Add("弱み: " + string.Join("・", weak));
+        if (r.DataConfidence < 80) lo.Add($"データ信頼度 {r.DataConfidence:0}%");
+        r.Weaknesses = lo.Count > 0 ? string.Join("、", lo) : "明確な減点要因は少ない。";
+
+        string rank = $"BuffettScore {r.BuffettScore:0} のため {r.OverallGrade} 評価。";
+        if (r.OverallGrade != "S")
+        {
+            if (r.BuffettScore >= 90 && !sAllowed)
+                rank += "90点以上だがS厳格条件(質・財務・長期成長・データ信頼度)に未達のためS不可。";
+            else rank += "S条件(90点以上＋各サブ高水準)には未達。";
+        }
+        r.RankReason = rank;
     }
 
     // ========== 業種プロファイル判定 ==========
@@ -215,13 +301,34 @@ public class BuffettScoreCalculator
         (CashGenerationScore(s.OperatingCF), 0.10));
 
     // ========== 3b. 財務安全性(金融業, 15%) ==========
-    //  営業CF・有利子負債比率・FCF は使わない。
+    //  営業CF・有利子負債比率・FCF は使わない。自己資本比率は金融業向けの基準で評価(低めが正常)。
     private static double FinancialSafety(Stock s) => Weighted(
-        (EquityRatioScore(s.EquityRatio), 0.25),
+        (FinancialEquityScore(s.EquityRatio), 0.25),
         (RoeStabilityScore(s.ROE), 0.25),
         (FinancialProfitStabilityScore(s), 0.25),
         (PayoutSafetyScore(s.PayoutRatio), 0.15),
         (DividendResilienceScore(s), 0.10));
+
+    // ========== 金融業の事業耐久力/収益力/成長(営業利益率・ROA・CFに依存しない) ==========
+    private static double FinancialBusinessDurability(Stock s) => Weighted(
+        (RoeQualityScore(s.ROE), 0.35),
+        (FinancialProfitStabilityScore(s), 0.25),
+        (DividendResilienceScore(s), 0.20),
+        (ValuationReasonablenessScore(s), 0.20));
+
+    private static double FinancialProfitability(Stock s) => Weighted(
+        (RoeQualityScore(s.ROE), 0.55),
+        (FinancialProfitStabilityScore(s), 0.25),
+        (ValuationReasonablenessScore(s), 0.20));
+
+    private static double FinancialGrowthStability(Stock s) => Weighted(
+        (GrowthScore(s.NetProfitGrowthRate), 0.40),
+        (GrowthScore(s.OrdinaryProfitGrowthRate), 0.30),
+        (DownsideResilienceScore(s), 0.30));
+
+    /// <summary>金融業向け自己資本比率(規制上 5〜12% が正常)。</summary>
+    private static double? FinancialEquityScore(double e)
+        => e == 0 ? (double?)null : e >= 12 ? 100 : e >= 10 ? 90 : e >= 8 ? 80 : e >= 5 ? 60 : e >= 3 ? 40 : 20;
 
     // ========== 4. 成長安定性(15%) ==========
     private static double GrowthStability(Stock s) => Weighted(
