@@ -114,10 +114,9 @@ app.MapGet("/api/stocks/{code}", async (string code, bool? refresh,
 
     return Results.Ok(new
     {
-        stock = s,
+        stock = s, // s.Buffett に総合点・6サブスコア・データ信頼度・ランク・判定を含む
         links = store.Links(code),
-        lastFetched = coord.LastFetched(code),
-        buffett = store.BuffettBreakdown(s) // バフェットスコアの内訳(根拠の明細)
+        lastFetched = coord.LastFetched(code)
     });
 });
 
@@ -132,7 +131,7 @@ app.MapGet("/api/compare", (string codes, StockStore store) =>
 app.MapPost("/api/stocks/{code}/userdata", (string code, UserDataRequest req, StockStore store) =>
 {
     var s = store.SaveUserData(code, req.Memo, req.BuffettCheck, req.UserInterest);
-    return s == null ? Results.NotFound() : Results.Ok(new { stock = s, buffett = store.BuffettBreakdown(s) });
+    return s == null ? Results.NotFound() : Results.Ok(new { stock = s });
 });
 
 // ===== CSV 取込(実データ列単位マージ) =====

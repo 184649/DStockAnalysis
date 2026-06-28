@@ -135,9 +135,6 @@ public class StockStore
 
     public List<ReferenceLink> Links(string code) => _links.BuildLinks(code);
 
-    /// <summary>バフェットスコアの内訳(配点・獲得点・根拠)を返す。個別分析でスコアの透明性を示すため。</summary>
-    public List<BuffettComponent> BuffettBreakdown(Stock s) => _scorer.BuffettBreakdown(s);
-
     /// <summary>個別分析でメモ・バフェットチェック・興味度を保存し、スコア再計算する。</summary>
     public Stock? SaveUserData(string code, StockMemo? memo, BuffettCheck? check, double? interest)
     {

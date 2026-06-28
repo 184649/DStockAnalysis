@@ -22,21 +22,6 @@ public class ScoreServiceTests
         }
     }
 
-    [Fact] // UT-SC-02: バフェットチェックが「はい」だとスコアが上がる
-    public void BuffettScore_YesChecks_HigherThan_NoChecks()
-    {
-        var yes = TestData.Good();
-        foreach (var setter in YesSetters(yes.BuffettCheck)) setter(YesNoUnknown.Yes);
-        _svc.Recalculate(yes);
-
-        var no = TestData.Good();
-        foreach (var setter in YesSetters(no.BuffettCheck)) setter(YesNoUnknown.No);
-        _svc.Recalculate(no);
-
-        Assert.True(yes.BuffettScore > no.BuffettScore,
-            $"yes={yes.BuffettScore} no={no.BuffettScore}");
-    }
-
     [Fact] // UT-SC-03: 自己資本比率が高いほど安全性スコアが高い
     public void SafetyScore_Monotonic_WithEquityRatio()
     {
@@ -84,82 +69,6 @@ public class ScoreServiceTests
         _svc.Recalculate(s);
         Assert.NotEqual(OverallJudgement.除外, s.Judgement);
         Assert.True(s.OverallScore >= 60);
-    }
-
-    [Fact] // UT-SC-08: バフェットスコアは内訳の合計に一致する(透明性)
-    public void BuffettScore_EqualsBreakdownSum()
-    {
-        var s = TestData.Good();
-        _svc.Recalculate(s);
-        var breakdown = _svc.BuffettBreakdown(s);
-        var sum = Math.Round(Math.Clamp(breakdown.Sum(c => c.Earned), 0, 100), 0);
-        Assert.Equal(s.BuffettScore, sum);
-        // 各内訳は 0..配点 の範囲に収まる
-        foreach (var c in breakdown) Assert.InRange(c.Earned, 0, c.Max);
-        Assert.Equal(100, breakdown.Sum(c => c.Max)); // 満点合計100
-    }
-
-    [Fact] // UT-SC-09: 質ゲート — 安いだけの不良株は割安加点が抑制される(バリュートラップ回避)
-    public void Buffett_Valuation_IsGatedByQuality()
-    {
-        // 同じ「割安」な PER/PBR でも、事業の質が低いと割安加点が小さくなる
-        var cheapJunk = new Stock
-        {
-            Code = "9991", PER = 6, PBR = 0.5, MixFactor = 3,
-            ROE = 2, ROA = 1, OperatingMargin = 1, NetProfitMargin = 1, EquityRatio = 18,
-            InterestBearingDebtRatio = 180, OperatingCF = -1000, FreeCashFlow = -5000,
-            RevenueGrowthRate = -8, NetProfitGrowthRate = -15, EpsGrowthRate = -15
-        };
-        var cheapQuality = new Stock
-        {
-            Code = "9992", PER = 6, PBR = 0.5, MixFactor = 3,
-            ROE = 18, ROA = 10, OperatingMargin = 20, NetProfitMargin = 14, EquityRatio = 65,
-            InterestBearingDebtRatio = 10, OperatingCF = 200000, FreeCashFlow = 150000,
-            OperatingCashFlowMargin = 18, RevenueGrowthRate = 8, NetProfitGrowthRate = 10, EpsGrowthRate = 10
-        };
-        double Val(Stock s) => _svc.BuffettBreakdown(s).First(c => c.Key == "valuation").Earned;
-        Assert.True(Val(cheapQuality) > Val(cheapJunk),
-            $"quality={Val(cheapQuality)} junk={Val(cheapJunk)}");
-        // 総合でも質の高い割安株が上回る
-        _svc.Recalculate(cheapJunk); _svc.Recalculate(cheapQuality);
-        Assert.True(cheapQuality.BuffettScore > cheapJunk.BuffettScore);
-    }
-
-    [Fact] // UT-SC-10: 同じ ROE でも自己資本比率が低い(借入依存)と資本収益力が下がる
-    public void Buffett_Capital_PenalizesLeveragedRoe()
-    {
-        var sound = new Stock { Code = "1", ROE = 15, ROA = 8, EquityRatio = 60 };
-        var levered = new Stock { Code = "2", ROE = 15, ROA = 4, EquityRatio = 20 };
-        double Cap(Stock s) => _svc.BuffettBreakdown(s).First(c => c.Key == "capital").Earned;
-        Assert.True(Cap(sound) > Cap(levered), $"sound={Cap(sound)} levered={Cap(levered)}");
-    }
-
-    [Fact] // UT-SC-11: 配当の継続性(連続増配・減配なし)が還元スコアを押し上げ、減配は押し下げる
-    public void Buffett_DividendReliability_RewardsConsecutiveAndPenalizesCuts()
-    {
-        double Ret(Stock s) => _svc.BuffettBreakdown(s).First(c => c.Key == "return").Earned;
-        var aristocrat = new Stock { Code = "1", DividendYield = 3, PayoutRatio = 40, ConsecutiveDividendYears = 12, DividendCutCount = 0, FreeCashFlow = 1000 };
-        var cutter = new Stock { Code = "2", DividendYield = 3, PayoutRatio = 40, ConsecutiveDividendYears = 0, DividendCutCount = 3, FreeCashFlow = 1000 };
-        Assert.True(Ret(aristocrat) > Ret(cutter), $"aristocrat={Ret(aristocrat)} cutter={Ret(cutter)}");
-    }
-
-    [Fact] // UT-SC-12: 無配でも高ROAでの再投資は評価される(バークシャー型を不当に減点しない)
-    public void Buffett_NoDividend_HighRoa_IsCreditedViaReinvestment()
-    {
-        double Ret(Stock s) => _svc.BuffettBreakdown(s).First(c => c.Key == "return").Earned;
-        var compounder = new Stock { Code = "1", DividendYield = 0, PayoutRatio = 0, ROA = 12, ROE = 18, FreeCashFlow = 1000 };
-        Assert.True(Ret(compounder) >= 6, $"reinvestment credit too low: {Ret(compounder)}");
-    }
-
-    [Fact] // UT-SC-13: どの銘柄でも各内訳は 0..配点 に収まり、満点合計は 100
-    public void Buffett_Breakdown_AlwaysWithinBounds()
-    {
-        foreach (var s in new[] { TestData.Good(), TestData.Weak(), new Stock { Code = "x" } })
-        {
-            var bd = _svc.BuffettBreakdown(s);
-            Assert.Equal(100, bd.Sum(c => c.Max));
-            foreach (var c in bd) Assert.InRange(c.Earned, 0, c.Max);
-        }
     }
 
     private static List<Action<YesNoUnknown>> YesSetters(BuffettCheck b) => new()

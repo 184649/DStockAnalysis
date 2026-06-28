@@ -192,11 +192,39 @@ public class WebApiTests : IClassFixture<WebApiTests.ApiFactory>
         var st = j.GetProperty("stock");
         Assert.Equal("最重要候補", st.GetProperty("Memo").GetProperty("Classification").GetString());
         Assert.Equal(95.0, st.GetProperty("UserInterest").GetDouble());
-        // バフェット採点の根拠(内訳)が返り、満点合計は100
-        var buffett = j.GetProperty("buffett");
-        Assert.Equal(JsonValueKind.Array, buffett.ValueKind);
-        double maxSum = 0; foreach (var c in buffett.EnumerateArray()) maxSum += c.GetProperty("Max").GetDouble();
-        Assert.Equal(100, maxSum);
+        // バフェット採点(6サブスコア等)が stock.Buffett に含まれる
+        var bf = st.GetProperty("Buffett");
+        foreach (var p in new[] { "BuffettScore", "BusinessDurabilityScore", "ProfitabilityScore", "SafetyScore",
+            "GrowthStabilityScore", "CapitalAllocationScore", "ValuationScore", "DataConfidence", "OverallGrade", "JudgementText" })
+            Assert.True(bf.TryGetProperty(p, out _), $"{p} が stock.Buffett に無い");
+    }
+
+    [Fact] // バフェット採点が /api/screen・/api/stocks・/api/compare のレスポンスに含まれる
+    public async Task BuffettScore_Present_InScreenStockAndCompare()
+    {
+        // 採点に必要な指標を CSV で投入(実取得化)
+        var csv = "Code,PER,PBR,ROE,ROA,EPS,BPS,OperatingMargin,NetProfitMargin,EquityRatio," +
+                  "RevenueGrowth5Y,OperatingProfitGrowthRate,OperatingCF,FreeCashFlow,DividendYield,PayoutRatio,MarketCap\n" +
+                  "7203,15,2.0,18,10,200,1500,20,14,60,7,8,200000,150000,2.5,40,1000000\n";
+        await _client.PostAsync("/api/import", new StringContent(csv, Encoding.UTF8, "text/csv"));
+
+        string[] fields = { "BuffettScore", "BusinessDurabilityScore", "ProfitabilityScore", "SafetyScore",
+            "GrowthStabilityScore", "CapitalAllocationScore", "ValuationScore", "DataConfidence", "OverallGrade", "JudgementText" };
+
+        // /api/screen
+        var screen = await JsonOf(await _client.PostAsJsonAsync("/api/screen", new { }));
+        var listed = screen.GetProperty("stocks").EnumerateArray().First(x => x.GetProperty("Code").GetString() == "7203");
+        var lbf = listed.GetProperty("Buffett");
+        foreach (var f in fields) Assert.True(lbf.TryGetProperty(f, out _), $"screen: {f} 欠落");
+        Assert.True(lbf.GetProperty("BuffettScore").GetDouble() >= 80); // 高品質→A以上
+
+        // /api/stocks/{code}
+        var detail = (await JsonOf(await _client.GetAsync("/api/stocks/7203"))).GetProperty("stock").GetProperty("Buffett");
+        foreach (var f in fields) Assert.True(detail.TryGetProperty(f, out _), $"detail: {f} 欠落");
+
+        // /api/compare
+        var cmp = (await JsonOf(await _client.GetAsync("/api/compare?codes=7203")))[0].GetProperty("Buffett");
+        foreach (var f in fields) Assert.True(cmp.TryGetProperty(f, out _), $"compare: {f} 欠落");
     }
 
     [Fact]
