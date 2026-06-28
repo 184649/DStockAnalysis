@@ -99,6 +99,62 @@ public class BuffettScoreCalculatorTests
         Assert.InRange(r.BuffettScore, 0, 100); // 例外なく算出
     }
 
+    // 伊藤忠相当(8001をハードコードしない。卸売業の総合商社プロファイル)
+    private static Stock TradingHouse() => new()
+    {
+        Code = "T001", Name = "テスト総合商社", Market = "東証プライム", Sector = "卸売業",
+        PER = 13.5, PBR = 1.94, MixFactor = 26.2, ROE = 14.59, ROA = 5.65, EPS = 135, BPS = 945, MarketCap = 14_529_500,
+        OperatingMargin = 4.7, OrdinaryProfitMargin = 8.1, NetProfitMargin = 6.1, OperatingCashFlowMargin = 7.6,
+        EquityRatio = 39.4, InterestBearingDebtRatio = 72,
+        RevenueGrowth1Y = 0.7, RevenueGrowth3Y = 2.1, OperatingProfitGrowthRate = 2.6, OrdinaryProfitGrowthRate = 3.8,
+        NetProfitGrowthRate = 2.3, EpsGrowthRate = 4.0,
+        OperatingCF = 1_131_837, FreeCashFlow = 742_965, InvestingCF = -388_872, FinancingCF = -726_477,
+        DividendYield = 2.4, PayoutRatio = 32.4, Dividend = 44, ConsecutiveDividendYears = 3, NonDividendCutYears = 3,
+        DividendCutCount = 0, DividendGrowth1Y = 5, DividendGrowth3Y = 14.5, TotalYield = 2.4, BuybackAmount = 170_057,
+    };
+
+    [Fact] // 8. 総合商社(卸売業)は薄利でも適正評価(B以上・各サブ基準クリア)。8001のハードコードなし。
+    public void TradingHouse_NotUndervalued()
+    {
+        var r = _calc.Calculate(TradingHouse());
+        Assert.Equal("TradingCompany", r.Profile);
+        Assert.True(r.BuffettScore >= 70, $"score={r.BuffettScore}");
+        Assert.Contains(r.OverallGrade, new[] { "B", "A", "S" });
+        Assert.True(r.BusinessDurabilityScore >= 60, $"biz={r.BusinessDurabilityScore}");
+        Assert.True(r.ProfitabilityScore >= 60, $"prof={r.ProfitabilityScore}");
+        Assert.True(r.SafetyScore >= 60, $"safe={r.SafetyScore}");
+        Assert.True(r.GrowthStabilityScore >= 50, $"growth={r.GrowthStabilityScore}");
+        Assert.True(r.CapitalAllocationScore >= 70, $"capital={r.CapitalAllocationScore}");
+        Assert.True(r.ValuationScore >= 60, $"val={r.ValuationScore}");
+    }
+
+    [Fact] // 9. 通常企業への悪影響なし(高品質StandardはA以上のまま)
+    public void Standard_Profile_Unaffected()
+    {
+        var r = _calc.Calculate(HighQuality());
+        Assert.Equal("StandardCompany", r.Profile);
+        Assert.True(r.BuffettScore >= 80);
+    }
+
+    [Fact] // 10. 商社でも赤字・債務超過寸前は上限が効く(下限補正されない)
+    public void TradingHouse_LossMaking_StillCapped()
+    {
+        var s = TradingHouse();
+        s.PER = -3; s.EPS = -10; s.ROE = -5; s.OperatingCF = -1000; s.FreeCashFlow = -2000; s.EquityRatio = 12;
+        var r = _calc.Calculate(s);
+        Assert.True(r.BuffettScore <= 65, $"score={r.BuffettScore}");
+    }
+
+    [Fact] // 11. 商社で成長率が一部欠損でも例外なし・0点扱いにしない(重み再配分)
+    public void TradingHouse_MissingGrowth_NoExceptionNoZero()
+    {
+        var s = TradingHouse();
+        s.EpsGrowthRate = 0; s.NetProfitGrowthRate = 0; s.OrdinaryProfitGrowthRate = 0; // 成長率欠損
+        var r = _calc.Calculate(s);
+        Assert.InRange(r.GrowthStabilityScore, 1, 100); // 0点ではなく残った指標で算出
+        Assert.True(r.BuffettScore >= 70); // 依然として下限補正でB以上
+    }
+
     [Fact] // 7. 金融業は金融業用の財務安全性で評価される(営業CF/有利子負債/FCFを使わない)
     public void Financial_UsesFinancialSafety()
     {

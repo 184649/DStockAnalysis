@@ -15,6 +15,7 @@ public class BuffettResult
     public double CapitalAllocationScore { get; set; }  // 株主還元・資本配分
     public double ValuationScore { get; set; }          // 割安性
     public double DataConfidence { get; set; }          // データ信頼度(取得済み重要指標の割合)
+    public string Profile { get; set; } = "StandardCompany"; // 採点プロファイル(Standard/Financial/Trading)
     public string OverallGrade { get; set; } = "E";     // S/A/B/C/D/E
     public string JudgementText { get; set; } = "";
 }

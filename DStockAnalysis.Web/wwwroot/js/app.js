@@ -630,6 +630,7 @@ function renderDetail() {
         <span class="bd-grade">${esc(bf.OverallGrade || "-")}</span>
         <span class="bd-conf">データ信頼度 ${Math.round(bf.DataConfidence || 0)}%</span>
       </h3>
+      <div class="desc">採点プロファイル: <b>${esc(bf.Profile || "StandardCompany")}</b>${bf.Profile === "TradingCompany" ? " — 卸売業・総合商社は営業利益率の絶対値だけで評価せず、ROE・CF・資本配分・財務安全性を重視して補正しています。" : ""}</div>
       <div class="desc">${esc(bf.JudgementText || "")}</div>
       <div class="desc" style="font-size:11px">配点: 事業耐久力25% / 収益力20% / 財務安全性15% / 成長安定性15% / 資本配分10% / 割安性15%。
       事業の質を割安性より重視。欠損指標は除外して重み再配分し、未取得が多い銘柄はデータ信頼度に応じて上限を設けます。</div>
