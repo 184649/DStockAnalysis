@@ -18,16 +18,29 @@ namespace DStockAnalysis.Services;
 /// </summary>
 public class BuffettScoreCalculator
 {
+    public enum Profile { Standard, Financial, Trading }
+
     public BuffettResult Calculate(Stock s)
     {
-        bool fin = IsFinancial(s.Sector);
+        var profile = DetectProfile(s);
+        bool fin = profile == Profile.Financial;
+        bool trading = profile == Profile.Trading;
 
-        double biz = BusinessDurability(s);
-        double prof = Profitability(s, fin);
+        // 業種プロファイル別の採点。総合商社・卸売業(Trading)は営業利益率の絶対値に依存せず、
+        // ROE・CF・財務・株主還元・バリュエーションを重視する。
+        double biz = trading ? TradingBusinessDurability(s) : BusinessDurability(s);
+        double prof = trading ? TradingProfitability(s) : Profitability(s, fin);
         double safe = fin ? FinancialSafety(s) : Safety(s);
-        double growth = GrowthStability(s);
+        double growth = trading ? TradingGrowthStability(s) : GrowthStability(s);
         double capital = CapitalAllocation(s);
         double val = Valuation(s);
+
+        // Trading: 妥当価格(PER低・PBR低・高ROE・性向健全)なら割安性を少し加点
+        if (trading && s.PER > 0 && s.PER <= 15 && s.PBR > 0 && s.PBR <= 2.0 && s.ROE >= 12 && s.PayoutRatio > 0 && s.PayoutRatio <= 50)
+            val = Math.Min(100, val + 8);
+        // Trading: 健全な配当(性向25-45%・利回り>0・ROE>=10・PER<=18)なら資本配分を不当に下げない
+        if (trading && s.PayoutRatio >= 25 && s.PayoutRatio <= 45 && s.DividendYield > 0 && s.ROE >= 10 && s.PER > 0 && s.PER <= 18)
+            capital = Math.Max(capital, 70);
 
         double raw = biz * 0.25 + prof * 0.20 + safe * 0.15 + growth * 0.15 + capital * 0.10 + val * 0.15;
         double conf = DataConfidence(s);
@@ -46,7 +59,19 @@ public class BuffettScoreCalculator
         if (s.RevenueGrowth5Y < 0 && s.OperatingProfitGrowthRate < 0) cap = Math.Min(cap, 65);
         if (s.ROE < 5 && s.OperatingMargin < 5) cap = Math.Min(cap, 60);
 
-        double final = Math.Round(Math.Clamp(Math.Min(raw, cap), 0, 100), 0);
+        double final = Math.Clamp(Math.Min(raw, cap), 0, 100);
+
+        // 優良・妥当価格の下限補正: 明確な弱点(赤字/債務超過/CF大幅赤字/過大配当/サンプル/低信頼度)が無く、
+        // PER妥当・ROE高め・財務許容・配当性向健全・データ信頼度が高い銘柄を D評価/50点台に沈めない。
+        bool qualifies = conf >= 80 && s.PER > 0 && s.PER <= 18 && s.PBR > 0 && s.PBR <= 2.5
+            && s.ROE >= 12 && s.EquityRatio >= 30 && s.PayoutRatio >= 20 && s.PayoutRatio <= 60
+            && !s.IsSampleIndicators;
+        bool disqualified = s.EPS <= 0 || s.PER <= 0 || s.ROE <= 0 || s.EquityRatio < 20
+            || (!fin && s.OperatingCF < 0 && s.FreeCashFlow < 0) || s.PayoutRatio > 100
+            || s.IsSampleIndicators || conf < 80;
+        if (qualifies && !disqualified) final = Math.Max(final, 70); // 最低70=B以上
+
+        final = Math.Round(final, 0);
 
         var r = new BuffettResult
         {
@@ -58,10 +83,111 @@ public class BuffettScoreCalculator
             CapitalAllocationScore = Math.Round(capital, 0),
             ValuationScore = Math.Round(val, 0),
             DataConfidence = Math.Round(conf, 0),
+            Profile = profile switch { Profile.Financial => "FinancialCompany", Profile.Trading => "TradingCompany", _ => "StandardCompany" },
         };
         r.OverallGrade = Grade(final);
-        r.JudgementText = Judgement(r);
+        r.JudgementText = Judgement(r, profile);
         return r;
+    }
+
+    // ========== 業種プロファイル判定 ==========
+    private static Profile DetectProfile(Stock s)
+    {
+        if (IsFinancial(s.Sector)) return Profile.Financial;
+        if (IsTrading(s)) return Profile.Trading;
+        return Profile.Standard;
+    }
+
+    private static bool IsTrading(Stock s)
+    {
+        if (!string.IsNullOrEmpty(s.Sector) && s.Sector.Contains("卸売")) return true;
+        foreach (var kw in new[] { "総合商社", "商社", "卸売" })
+            if ((s.Name?.Contains(kw) ?? false) || (s.Theme?.Contains(kw) ?? false) || (s.Description?.Contains(kw) ?? false))
+                return true;
+        return false;
+    }
+
+    // ========== Trading: 事業耐久力 ==========
+    private static double TradingBusinessDurability(Stock s) => Weighted(
+        (RoeQualityScore(s.ROE), 0.25),
+        (ProfitAndCFStabilityScore(s), 0.25),
+        (BalanceSheetResilienceScore(s.EquityRatio), 0.20),
+        (ShareholderReturnStabilityScore(s), 0.15),
+        (ValuationReasonablenessScore(s), 0.15));
+
+    // ========== Trading: 収益力(営業利益率の絶対値に依存しない) ==========
+    private static double TradingProfitability(Stock s) => Weighted(
+        (RoeQualityScore(s.ROE), 0.45),
+        (NetProfitMarginScore(s.NetProfitMargin), 0.15),
+        (OrdinaryMarginScore(s.OrdinaryProfitMargin), 0.15),
+        (TradingOperatingCFScore(s), 0.15),
+        (RoaScore(s.ROA), 0.10));
+
+    // ========== Trading: 成長安定性(売上ぶれに引きずられない。利益・配当の安定を重視) ==========
+    private static double TradingGrowthStability(Stock s) => Weighted(
+        (GrowthScore(s.EpsGrowthRate), 0.25),
+        (GrowthScore(s.NetProfitGrowthRate), 0.25),
+        (GrowthScore(s.OrdinaryProfitGrowthRate), 0.20),
+        (DividendGrowthScore(s), 0.15),
+        (DownsideResilienceScore(s), 0.15));
+
+    private static double? RoeQualityScore(double roe)
+        => roe == 0 ? (double?)null : roe >= 18 ? 100 : roe >= 15 ? 85 : roe >= 12 ? 70 : roe >= 10 ? 55 : roe >= 8 ? 40 : roe > 0 ? 20 : 0;
+
+    private static double? ProfitAndCFStabilityScore(Stock s)
+    {
+        double basePart;
+        if (s.OperatingCF > 0 && s.FreeCashFlow > 0) basePart = 90;
+        else if (s.OperatingCF > 0) basePart = 70;
+        else if (s.OperatingCF < 0 && s.FreeCashFlow < 0) basePart = 20;
+        else if (s.OperatingCF == 0 && s.FreeCashFlow == 0) return null; // 両方欠損は除外
+        else basePart = 50;
+        double g = Pick(s.NetProfitGrowthRate, s.OrdinaryProfitGrowthRate, s.EpsGrowthRate);
+        if (g > 0) basePart = Math.Min(100, basePart + 10); // 利益成長プラスは加点(欠損は減点しない)
+        return basePart;
+    }
+
+    private static double? BalanceSheetResilienceScore(double e)
+        => e == 0 ? (double?)null : e >= 50 ? 100 : e >= 40 ? 80 : e >= 35 ? 70 : e >= 30 ? 60 : e >= 20 ? 40 : Math.Clamp(e, 0, 20);
+
+    private static double? ShareholderReturnStabilityScore(Stock s)
+    {
+        if (s.PayoutRatio == 0 && s.DividendYield == 0 && s.BuybackAmount == 0) return null;
+        double p = s.PayoutRatio;
+        double sc = p <= 0 ? 50
+            : (p >= 25 && p <= 45) ? 100
+            : (p >= 20 && p <= 60) ? 80
+            : (p >= 10 && p <= 70) ? 60
+            : p <= 100 ? 30
+            : Math.Clamp(20 - (p - 100) / 10, 0, 20);
+        if (s.DividendCutCount == 0 && s.NonDividendCutYears >= 10) sc += 5;
+        if (s.BuybackAmount > 0) sc += 5;
+        if (s.DividendGrowth5Y > 0 || s.DividendGrowth10Y > 0) sc += 5;
+        return Math.Min(100, sc);
+    }
+
+    private static double? ValuationReasonablenessScore(Stock s)
+    {
+        double? perSc = s.PER == 0 ? (double?)null
+            : s.PER <= 10 ? 100 : s.PER <= 15 ? 80 : s.PER <= 18 ? 65 : s.PER <= 22 ? 45 : s.PER <= 30 ? 20 : 0;
+        double? pbrSc = null;
+        if (s.PBR != 0)
+        {
+            double v = s.PBR <= 1.0 ? 100 : s.PBR <= 1.5 ? 80 : s.PBR <= 2.0 ? 65 : s.PBR <= 3.0 ? 40 : Math.Clamp(20 - (s.PBR - 3) * 5, 0, 20);
+            if (s.ROE >= 15 && s.PBR <= 3.0) v += 15; else if (s.ROE >= 12 && s.PBR <= 2.5) v += 10;
+            pbrSc = Math.Min(100, v);
+        }
+        return Weighted((perSc, 0.5), (pbrSc, 0.5));
+    }
+
+    private static double? OrdinaryMarginScore(double v)
+        => v == 0 ? (double?)null : v >= 15 ? 100 : v >= 10 ? 80 : v >= 7 ? 60 : v >= 5 ? 40 : v > 0 ? 20 : 0;
+
+    private static double? TradingOperatingCFScore(Stock s)
+    {
+        if (s.OperatingCF == 0 && s.FreeCashFlow == 0) return null;
+        if (s.OperatingCF > 0) return s.FreeCashFlow > 0 ? 100 : 80;
+        return s.FreeCashFlow > 0 ? 40 : 0;
     }
 
     // ========== 1. 事業耐久力(25%) ==========
@@ -328,8 +454,12 @@ public class BuffettScoreCalculator
     public static string Grade(double score)
         => score >= 90 ? "S" : score >= 80 ? "A" : score >= 70 ? "B" : score >= 60 ? "C" : score >= 50 ? "D" : "E";
 
-    private static string Judgement(BuffettResult r)
+    private static string Judgement(BuffettResult r, Profile profile)
     {
+        // 総合商社・卸売業は市況・会計影響で売上がぶれるため、ROE・株主還元・価格水準を主眼にコメントする。
+        if (profile == Profile.Trading && r.BuffettScore >= 70)
+            return "バフェット型候補。ROE・株主還元・バリュエーションのバランスは良好。ただし商社特有の市況感応度と成長安定性には確認が必要。";
+
         string baseText = r.OverallGrade switch
         {
             "S" => "超優良。長期保有の中核候補。ただし購入価格には注意。",
@@ -339,7 +469,6 @@ public class BuffettScoreCalculator
             "D" => "要注意。バフェット型としては弱点が多い。",
             _ => "バフェット型では原則見送り。",
         };
-        // 最も低いサブスコアを弱点として補足
         var weakest = new (string name, double v)[]
         {
             ("事業耐久力", r.BusinessDurabilityScore), ("収益力", r.ProfitabilityScore),
@@ -347,6 +476,7 @@ public class BuffettScoreCalculator
             ("資本配分", r.CapitalAllocationScore), ("割安性", r.ValuationScore),
         }.OrderBy(x => x.v).First();
         string note = weakest.v < 50 ? $" 弱点: {weakest.name}が低め({weakest.v:0})。" : "";
+        if (profile == Profile.Trading) note += " ※卸売業/総合商社は営業利益率の絶対値で評価せず、ROE・CF・資本配分・財務を重視して補正。";
         if (r.DataConfidence < 80) note += $" データ信頼度{r.DataConfidence:0}%。";
         return baseText + note;
     }
