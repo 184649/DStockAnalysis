@@ -646,9 +646,10 @@ function renderDetail() {
         }).join("")}
       </div>
       <div class="reasons">
-        <div><span class="rk good">高評価要因</span> ${esc(bf.Strengths || "-")}</div>
-        <div><span class="rk bad">減点要因</span> ${esc(bf.Weaknesses || "-")}</div>
-        <div><span class="rk">ランク判定</span> ${esc(bf.RankReason || "-")}</div>
+        <div><span class="rk good">高評価要因</span> ${esc(bf.HighScoreReasons || "-")}</div>
+        <div><span class="rk bad">減点要因</span> ${esc(bf.PenaltyReasons || "-")}</div>
+        <div><span class="rk">ランク判定</span> ${esc(bf.RankDecisionReasons || "-")}</div>
+        ${bf.UsedWeights ? `<div><span class="rk">使用重み</span> 事業耐久力${Math.round(bf.UsedWeights.BusinessDurabilityWeight*100)}% / 収益力${Math.round(bf.UsedWeights.ProfitabilityWeight*100)}% / 財務安全${Math.round(bf.UsedWeights.SafetyWeight*100)}% / 成長${Math.round(bf.UsedWeights.GrowthStabilityWeight*100)}% / 資本配分${Math.round(bf.UsedWeights.CapitalAllocationWeight*100)}% / 割安${Math.round(bf.UsedWeights.ValuationWeight*100)}%${bf.CalibrationInfo ? "（" + esc(bf.CalibrationInfo) + "）" : ""}</div>` : ""}
       </div>
     </div>` : "";
   el.innerHTML = `

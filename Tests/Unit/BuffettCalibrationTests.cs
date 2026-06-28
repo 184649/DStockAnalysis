@@ -116,12 +116,55 @@ public class BuffettCalibrationTests
         }
     }
 
+    [Fact] // テスト5: ランクと点数の整合性(92/A や 88/S が出ない)
+    public void Rank_And_Score_AreConsistent()
+    {
+        foreach (var smp in BuffettScoreCalibrationSet.All)
+        {
+            var r = Score(smp.Stock);
+            (double lo, double hi) = r.OverallGrade switch
+            {
+                "S" => (90, 100), "A" => (80, 89), "B" => (70, 79),
+                "C" => (60, 69), "D" => (50, 59), _ => (0, 49),
+            };
+            Assert.InRange(r.BuffettScore, lo, hi);
+        }
+    }
+
+    [Fact] // テスト6: S不適格は計算上90+でも89以下に補正される
+    public void SIneligible_CappedTo89()
+    {
+        // 高ROE・高収益だが長期成長(10年)が無い → S不適格
+        var s = new Stock
+        {
+            Code = "X", PER = 14, PBR = 2.2, ROE = 25, ROA = 14, EPS = 200, BPS = 1500, MarketCap = 800000,
+            OperatingMargin = 30, NetProfitMargin = 18, OperatingCashFlowMargin = 24, EquityRatio = 65,
+            RevenueGrowth5Y = 7, RevenueGrowth10Y = 0, OperatingProfitGrowthRate = 9, EpsGrowthRate = 10,
+            NetProfitGrowthRate = 10, OrdinaryProfitMargin = 30, OperatingCF = 900000, FreeCashFlow = 700000,
+            DividendYield = 2.5, PayoutRatio = 35, ConsecutiveDividendYears = 10, NonDividendCutYears = 12,
+            DividendGrowth5Y = 9, BuybackAmount = 50000, TotalYield = 2.5, IndicatorsFetched = true,
+        };
+        var r = Score(s);
+        Assert.True(r.BuffettScore <= 89, $"score={r.BuffettScore}");
+        Assert.NotEqual("S", r.OverallGrade);
+    }
+
+    [Fact] // テスト11: 順位制約を満たす
+    public void RankingConstraints_AreSatisfied()
+    {
+        var scores = BuffettScoreCalibrationSet.All.ToDictionary(x => x.Name, x => Score(x.Stock).BuffettScore);
+        foreach (var c in BuffettScoreCalibrationSet.RankingConstraints)
+            Assert.True(scores[c.BetterSampleName] >= scores[c.WorseSampleName],
+                $"{c.BetterSampleName}({scores[c.BetterSampleName]}) >= {c.WorseSampleName}({scores[c.WorseSampleName]})");
+        Assert.True(BuffettScoreCalibrationSet.RankingConstraints.Count >= 8);
+    }
+
     [Fact] // 評価理由が生成される
     public void Reasons_AreGenerated()
     {
         var r = Score(BuffettScoreCalibrationSet.All.First(x => x.Category == "総合商社").Stock);
-        Assert.False(string.IsNullOrWhiteSpace(r.Strengths));
-        Assert.False(string.IsNullOrWhiteSpace(r.Weaknesses));
-        Assert.False(string.IsNullOrWhiteSpace(r.RankReason));
+        Assert.False(string.IsNullOrWhiteSpace(r.HighScoreReasons));
+        Assert.False(string.IsNullOrWhiteSpace(r.PenaltyReasons));
+        Assert.False(string.IsNullOrWhiteSpace(r.RankDecisionReasons));
     }
 }

@@ -16,9 +16,12 @@ public class BuffettResult
     public double ValuationScore { get; set; }          // 割安性
     public double DataConfidence { get; set; }          // データ信頼度(取得済み重要指標の割合)
     public string Profile { get; set; } = "StandardCompany"; // 採点プロファイル(Standard/Financial/Trading)
+    public string ScoringProfile { get; set; } = "StandardCompany"; // 別名(UI/DTO 用)
     public string OverallGrade { get; set; } = "E";     // S/A/B/C/D/E
     public string JudgementText { get; set; } = "";
-    public string Strengths { get; set; } = "";         // 高評価要因
-    public string Weaknesses { get; set; } = "";        // 減点要因
-    public string RankReason { get; set; } = "";        // ランク判定理由
+    public string HighScoreReasons { get; set; } = "";  // 高評価要因
+    public string PenaltyReasons { get; set; } = "";    // 減点要因
+    public string RankDecisionReasons { get; set; } = "";// ランク判定・補正理由
+    public BuffettScoreWeights? UsedWeights { get; set; } // 採点に使った重み
+    public string CalibrationInfo { get; set; } = "";   // 教師データ・最適化の情報
 }
